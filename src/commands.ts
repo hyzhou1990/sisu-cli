@@ -2,8 +2,20 @@ import { spawn } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import { defaultHttp, errorDetail, HttpClient, authHeaders } from './http'
-import { extractSseText } from './sse'
-import { clientStamp, SisuClientKind } from './client'
+import { SisuClientKind } from './client'
+import { createSisuCloudModel } from './runtime/adapter'
+import { createLaunchStubModel } from './runtime/loop'
+import {
+  fetchModelCatalog,
+  resolveCatalogModel,
+  resolveRuntimeModel,
+  type CatalogModel,
+} from './runtime/models'
+import { execLocalTurn } from './runtime/transport'
+import type { ModelClient } from './runtime/types'
+
+export { fetchModelCatalog, resolveCatalogModel, resolveRuntimeModel }
+export type { CatalogModel }
 import {
   bindWorkspace,
   clearAuth,
@@ -291,58 +303,41 @@ export async function execCommand(
     model?: string
     newConversation?: boolean
     client?: SisuClientKind
+    cwd?: string
+    stub?: boolean
+    modelClient?: ModelClient
   } = {},
   http: HttpClient = defaultHttp,
 ): Promise<{ conversationId: string; text: string }> {
-  const auth = requireAuth()
   const text = prompt.trim()
   if (!text) throw new Error('prompt is required')
-  const stamp = clientStamp(options.client || 'cli')
-
-  let conversationId = options.conversationId || (!options.newConversation ? readSession().last_conversation_id : '')
-  if (!conversationId) {
-    const created = await http(`${auth.api_base}/api/chat/conversations`, {
-      method: 'POST',
-      headers: authHeaders(auth.token),
-      body: JSON.stringify({
-        title: text.slice(0, 50),
-        model: options.model || readSession().last_model || undefined,
-        project_id: options.projectId || readSession().last_project_id || undefined,
-        client: stamp.client,
-        client_version: stamp.client_version,
-      }),
-    })
-    const body = await created.json().catch(() => ({}))
-    if (!created.ok) throw new Error(errorDetail(body, `create conversation failed (${created.status})`))
-    conversationId = String(body.id || '')
-    if (!conversationId) throw new Error('create conversation missing id')
+  const stub = Boolean(options.stub || process.env.SISU_RUNTIME_STUB === '1')
+  const cwd = options.cwd || process.cwd()
+  const modelClient = options.modelClient || (stub
+    ? createLaunchStubModel()
+    : (() => {
+      const auth = requireAuth()
+      return createSisuCloudModel(http, {
+        apiBase: auth.api_base,
+        token: auth.token,
+        client: options.client || 'cli',
+      })
+    })())
+  if (!stub) requireAuth()
+  if (options.projectId) {
+    writeSession({ ...readSession(), last_project_id: options.projectId })
   }
-
-  const sent = await http(`${auth.api_base}/api/chat/send`, {
-    method: 'POST',
-    headers: authHeaders(auth.token),
-    body: JSON.stringify({
-      conversation_id: conversationId,
-      message: text,
-      model: options.model || readSession().last_model || undefined,
-      task_category: 'coding',
-      client: stamp.client,
-      client_version: stamp.client_version,
-      client_request_id: stamp.client_request_id,
-    }),
+  const model = await resolveRuntimeModel(http, { explicit: options.model, stub })
+  const result = await execLocalTurn(text, {
+    cwd,
+    model,
+    conversationId: options.conversationId,
+    newConversation: options.newConversation,
+    modelClient,
+    http,
+    client: options.client || 'cli',
   })
-  if (!sent.ok) {
-    const body = await sent.json().catch(() => ({}))
-    throw new Error(errorDetail(body, `exec failed (${sent.status})`))
-  }
-  const stream = await sent.text()
-  const output = extractSseText(stream)
-  writeSession({
-    ...readSession(),
-    last_conversation_id: conversationId,
-    last_project_id: options.projectId || readSession().last_project_id,
-  })
-  return { conversationId, text: output }
+  return { conversationId: result.conversationId, text: result.text }
 }
 
 export async function listConversationsCommand(http: HttpClient = defaultHttp): Promise<string> {
@@ -379,44 +374,6 @@ export async function setTrainingCommand(optIn: boolean, http: HttpClient = defa
   return optIn ? 'training opt-in on (new turns may be used if eligible)' : 'training opt-in off'
 }
 
-export interface CatalogModel {
-  name: string
-  label: string
-}
-
-function normalizeModelKey(value: string): string {
-  return value.toLowerCase().replace(/[-_.\s]/g, '')
-}
-
-export async function fetchModelCatalog(http: HttpClient = defaultHttp): Promise<{
-  models: CatalogModel[]
-  defaultModel: string
-}> {
-  const auth = requireAuth()
-  const response = await http(`${auth.api_base}/api/chat/models`, { headers: authHeaders(auth.token) })
-  const body = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(errorDetail(body, `models failed (${response.status})`))
-  const rows = Array.isArray(body?.models) ? body.models : []
-  const models = rows
-    .map((row: { name?: string; display_name?: string; label?: string }) => {
-      const name = String(row?.name || '').trim()
-      if (!name) return null
-      return { name, label: String(row.display_name || row.label || name) }
-    })
-    .filter((row: CatalogModel | null): row is CatalogModel => Boolean(row))
-  return { models, defaultModel: String(body?.default_model || '') }
-}
-
-export function resolveCatalogModel(query: string, models: CatalogModel[]): CatalogModel | undefined {
-  const needle = normalizeModelKey(query)
-  if (!needle) return undefined
-  return (
-    models.find((row) => normalizeModelKey(row.name) === needle) ||
-    models.find((row) => normalizeModelKey(row.label) === needle) ||
-    models.find((row) => normalizeModelKey(row.name).includes(needle) || normalizeModelKey(row.label).includes(needle))
-  )
-}
-
 export async function listModelsCommand(http: HttpClient = defaultHttp): Promise<string> {
   const { models, defaultModel } = await fetchModelCatalog(http)
   const current = readSession().last_model || defaultModel
@@ -435,10 +392,6 @@ export async function listModelsCommand(http: HttpClient = defaultHttp): Promise
 export async function setModelCommand(query: string, http: HttpClient = defaultHttp): Promise<string> {
   const wanted = query.trim()
   if (!wanted) return listModelsCommand(http)
-  const { models, defaultModel } = await fetchModelCatalog(http)
-  const match = resolveCatalogModel(wanted, models)
-  const name = match?.name || (normalizeModelKey(wanted) === normalizeModelKey(defaultModel) ? defaultModel : '')
-  if (!name) throw new Error(`unknown model ${wanted}`)
-  writeSession({ ...readSession(), last_model: name })
+  const name = await resolveRuntimeModel(http, { explicit: wanted })
   return `model ${name}`
 }

@@ -71,9 +71,9 @@ export function formatChromeStatus(
   const conv = shortConversationId(conversationId)
   const modelName = (model || '').trim()
   if (!who) {
-    return conv ? `sisu · not signed in · ${conv}` : 'sisu · not signed in'
+    return conv ? `sisu local · not signed in · ${conv}` : 'sisu local · not signed in'
   }
-  const parts = [who]
+  const parts = [who, 'local']
   if (modelName) parts.push(modelName)
   const quotaText = (quota || '').trim()
   if (quotaText && quotaText !== 'quota unavailable') parts.push(quotaText)
@@ -103,7 +103,7 @@ function pushEntry(state: PagerState, kind: EntryKind, text: string): PagerState
 }
 
 function clearDraft(state: PagerState): PagerState {
-  return { ...state, draft: '', slashOpen: false, slashIndex: 0 }
+  return { ...state, draft: '', slashOpen: false, slashIndex: 0, draftIndex: 0, historyIndex: -1, stashDraft: '' }
 }
 
 function submittedText(state: PagerState): string {

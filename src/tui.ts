@@ -6,7 +6,10 @@ import { mobiusFrameHeight } from './mobius'
 import { runPager, type PagerIo, type RunPagerOptions } from './pager/app'
 import { stdioPagerIo } from './pager/stdio'
 import { readAuth } from './store'
-import { createFastApiTransport, type TurnTransport } from './transport'
+import { findGrokBuildBinary, sisuGrokBuildEnv, writeSisuGrokConfig } from './runtime/launch'
+import { createLocalRuntimeTransport } from './runtime/transport'
+import type { TurnTransport } from './transport'
+import { spawn } from 'child_process'
 
 export interface LineIo {
   write(text: string): void
@@ -207,7 +210,7 @@ export function tuiHelp(): string {
     '/export     write the thread to a markdown file',
     '/status     account and quota',
     '/ls         local workspace files',
-    '/history    saved cloud conversations',
+    '/history    saved local sessions',
     '/open <id>  continue a saved conversation',
     '/new        start a new conversation',
     '/training on|off   allow or refuse training use of new turns',
@@ -257,9 +260,22 @@ export async function runTui(
     }, http)
   }
 
+  if (usePager && !deps.pager) {
+    const grokBin = findGrokBuildBinary()
+    if (grokBin && process.stdout.isTTY) {
+      writeSisuGrokConfig()
+      io.close?.()
+      const child = spawn(grokBin, [], { stdio: 'inherit', env: sisuGrokBuildEnv(), cwd: process.cwd() })
+      return await new Promise((resolve) => {
+        child.on('exit', (code) => resolve(code ?? 1))
+        child.on('error', () => resolve(1))
+      })
+    }
+  }
+
   if (usePager) {
     io.close?.()
-    const transport = createFastApiTransport(http)
+    const transport = createLocalRuntimeTransport(http, { client: 'tui' })
     return await (deps.pager ?? runPager)(stdioPagerIo(), transport, {
       columns,
       email: account?.email,

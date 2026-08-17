@@ -34,13 +34,14 @@ Usage:
   sisu status
   sisu open <dir> --project <project-id>
   sisu ls [--project <project-id>]
-  sisu exec "<prompt>" [--project <id>] [--model <name>] [--new]
+  sisu exec "<prompt>" [--project <id>] [--model <name>] [--new] [--stub]
+  sisu -p "<prompt>"          headless local-agent turn (alias of exec)
   sisu models
   sisu model <name>
   sisu history
   sisu thread <conversation-id>
   sisu training --on|--off
-  sisu                 interactive TUI (Möbius splash)
+  sisu                 Grok Build TUI (SiSu account, models, quota)
   sisu help
 
 Auth and workspaces live in $SISU_HOME (default ~/.sisu), shared with Desktop.
@@ -63,8 +64,8 @@ function parseArgs(args: string[]): { flags: Record<string, string>; rest: strin
   const switches = new Set<string>()
   for (let i = 0; i < args.length; i += 1) {
     const item = args[i]
-    if (item === '--new') {
-      switches.add('new')
+    if (item === '--new' || item === '--stub' || item === '-p' || item === '--print') {
+      switches.add(item.replace(/^-+/, ''))
       continue
     }
     if (item.startsWith('--')) {
@@ -139,7 +140,7 @@ export async function runCli(
     process.stdout.write(`${listLocalCommand(flag(args, '--project'))}\n`)
     return 0
   }
-  if (command === 'exec') {
+  if (command === 'exec' || command === '-p' || command === '--print') {
     const parsed = parseArgs(args)
     const prompt = parsed.rest.join(' ').trim()
     if (!prompt) {
@@ -150,6 +151,7 @@ export async function runCli(
       projectId: parsed.flags['--project'],
       model: parsed.flags['--model'],
       newConversation: parsed.switches.has('new'),
+      stub: parsed.switches.has('stub') || process.env.SISU_RUNTIME_STUB === '1',
     })
     if (result.text) process.stdout.write(`${result.text}\n`)
     return 0

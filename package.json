@@ -1,7 +1,7 @@
 {
   "name": "@stevezhou/sisu",
-  "version": "0.1.11",
-  "description": "SiSu CLI — one login, cloud quota, local workspace",
+  "version": "0.2.0",
+  "description": "SiSu CLI — local grok-build runtime, SiSu cloud models",
   "license": "UNLICENSED",
   "homepage": "https://www.sisu.chat",
   "bugs": {
@@ -22,7 +22,8 @@
   "main": "dist/main.js",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "NOTICE"
   ],
   "publishConfig": {
     "access": "public"

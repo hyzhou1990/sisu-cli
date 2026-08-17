@@ -1,7 +1,7 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { runPager, PagerIo, chromeShortQuota } from './app'
+import { runPager, PagerIo, chromeShortQuota, formatChromeStatus } from './app'
 import { readSession, writeSession } from '../store'
 import type { TurnTransport } from '../transport'
 
@@ -593,6 +593,13 @@ it('persists last_conversation_id when resume Enter binds a row', async () => {
   expect(readSession().last_conversation_id).toBe('conv-new')
   io.feed('/quit\r')
   await done
+})
+
+it('chrome marks the local runtime so 0.2.0 is not the old billed-send shell', () => {
+  expect(formatChromeStatus('ada@b.c', 'quota unlimited', 'c1', 'kimi-k2.5')).toBe(
+    'ada@b.c · local · kimi-k2.5 · quota unlimited · c1',
+  )
+  expect(formatChromeStatus(undefined, '')).toBe('sisu local · not signed in')
 })
 
 it('chromeShortQuota keeps unlimited, first pts segment, or unavailable', () => {

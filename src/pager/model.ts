@@ -17,11 +17,16 @@ export interface PagerState {
   slashIndex: number
   /** Optional status chrome above the prompt (e.g. user@host · quota). */
   statusLine?: string
+  /** Code-point index into draft. */
+  draftIndex: number
+  /** -1 = live draft; otherwise index into user-prompt history. */
+  historyIndex: number
+  stashDraft: string
 }
 
 export type PagerKey =
   | { type: 'char'; value: string }
-  | { type: 'enter' | 'backspace' | 'up' | 'down' | 'left' | 'right' | 'escape' }
+  | { type: 'enter' | 'backspace' | 'up' | 'down' | 'left' | 'right' | 'escape' | 'pageup' | 'pagedown' }
 
 export const SLASH_COMMANDS: Array<{ name: string; hint: string }> = [
   { name: '/login', hint: 'Sign in with the browser' },
@@ -64,6 +69,9 @@ export function createPagerState(): PagerState {
     slashOpen: false,
     conversationId: '',
     slashIndex: 0,
+    draftIndex: 0,
+    historyIndex: -1,
+    stashDraft: '',
   }
 }
 
@@ -82,11 +90,42 @@ function clampSlashIndex(draft: string, slashIndex: number): number {
   return slashIndex
 }
 
-function withDraft(state: PagerState, draft: string, slashOpen?: boolean): PagerState {
+function draftChars(draft: string): string[] {
+  return Array.from(draft)
+}
+
+function clampDraftIndex(draft: string, index: number): number {
+  const n = draftChars(draft).length
+  if (index < 0) return 0
+  if (index > n) return n
+  return index
+}
+
+function insertAt(draft: string, index: number, value: string): { draft: string; draftIndex: number } {
+  const chars = draftChars(draft)
+  const at = clampDraftIndex(draft, index)
+  chars.splice(at, 0, ...Array.from(value))
+  return { draft: chars.join(''), draftIndex: at + Array.from(value).length }
+}
+
+function deleteBefore(draft: string, index: number): { draft: string; draftIndex: number } {
+  const chars = draftChars(draft)
+  const at = clampDraftIndex(draft, index)
+  if (at <= 0) return { draft, draftIndex: 0 }
+  chars.splice(at - 1, 1)
+  return { draft: chars.join(''), draftIndex: at - 1 }
+}
+
+function userPrompts(state: PagerState): string[] {
+  return state.entries.filter((entry) => entry.kind === 'user').map((entry) => entry.text)
+}
+
+function withDraft(state: PagerState, draft: string, slashOpen?: boolean, draftIndex?: number): PagerState {
   const open = slashOpen ?? (draft.startsWith('/') ? state.slashOpen || draft === '/' : false)
   return {
     ...state,
     draft,
+    draftIndex: clampDraftIndex(draft, draftIndex ?? draftChars(draft).length),
     slashOpen: open && draft.startsWith('/'),
     slashIndex: open && draft.startsWith('/') ? clampSlashIndex(draft, state.slashIndex) : 0,
   }
@@ -171,28 +210,54 @@ export function appendText(state: PagerState, text: string): PagerState {
   return appendText(seeded, text)
 }
 
+function applyHistory(state: PagerState, delta: number): PagerState {
+  const prompts = userPrompts(state)
+  if (prompts.length === 0) {
+    if (state.draft === '' && state.entries.length > 0) {
+      const selected = clampSelected(state.entries, state.selected + delta)
+      return { ...state, selected }
+    }
+    return state
+  }
+  let historyIndex = state.historyIndex
+  let stashDraft = state.stashDraft
+  if (historyIndex < 0) {
+    if (delta > 0) return state
+    stashDraft = state.draft
+    historyIndex = prompts.length - 1
+  } else {
+    historyIndex += delta
+  }
+  if (historyIndex < 0) historyIndex = 0
+  if (historyIndex >= prompts.length) {
+    return withDraft({ ...state, historyIndex: -1, stashDraft: '' }, stashDraft, stashDraft.startsWith('/'))
+  }
+  const draft = prompts[historyIndex]
+  return withDraft({ ...state, historyIndex, stashDraft }, draft, draft.startsWith('/'))
+}
+
 export function applyKey(state: PagerState, key: PagerKey): PagerState {
   switch (key.type) {
     case 'char': {
-      const draft = state.draft + key.value
+      const next = insertAt(state.draft, state.draftIndex, key.value)
       if (key.value === '/' && state.draft === '') {
-        return { ...state, draft: '/', slashOpen: true, slashIndex: 0 }
+        return { ...state, draft: '/', draftIndex: 1, slashOpen: true, slashIndex: 0, historyIndex: -1 }
       }
-      if (state.slashOpen || draft.startsWith('/')) {
-        return withDraft(state, draft, draft.startsWith('/'))
+      if (state.slashOpen || next.draft.startsWith('/')) {
+        return withDraft({ ...state, historyIndex: -1 }, next.draft, next.draft.startsWith('/'), next.draftIndex)
       }
-      return { ...state, draft }
+      return { ...state, draft: next.draft, draftIndex: next.draftIndex, historyIndex: -1 }
     }
     case 'backspace': {
       if (!state.draft) return state
-      const draft = state.draft.slice(0, -1)
+      const next = deleteBefore(state.draft, state.draftIndex)
       if (state.slashOpen) {
-        if (!draft.startsWith('/')) {
-          return { ...state, draft, slashOpen: false, slashIndex: 0 }
+        if (!next.draft.startsWith('/')) {
+          return { ...state, draft: next.draft, draftIndex: next.draftIndex, slashOpen: false, slashIndex: 0 }
         }
-        return withDraft(state, draft, true)
+        return withDraft(state, next.draft, true, next.draftIndex)
       }
-      return { ...state, draft }
+      return { ...state, draft: next.draft, draftIndex: next.draftIndex }
     }
     case 'escape': {
       if (state.slashOpen) {
@@ -201,13 +266,20 @@ export function applyKey(state: PagerState, key: PagerKey): PagerState {
       return state
     }
     case 'enter': {
-      // Command execution is owned by the app layer; model only retains draft.
-      return state
+      return { ...state, historyIndex: -1, stashDraft: '' }
     }
-    case 'left':
+    case 'left': {
+      if (state.draft) {
+        return { ...state, draftIndex: clampDraftIndex(state.draft, state.draftIndex - 1) }
+      }
       return setEntryFold(state, true)
-    case 'right':
+    }
+    case 'right': {
+      if (state.draft) {
+        return { ...state, draftIndex: clampDraftIndex(state.draft, state.draftIndex + 1) }
+      }
       return setEntryFold(state, false)
+    }
     case 'up': {
       if (state.slashOpen) {
         const items = filterSlash(state.draft)
@@ -215,11 +287,7 @@ export function applyKey(state: PagerState, key: PagerKey): PagerState {
         const slashIndex = (state.slashIndex - 1 + items.length) % items.length
         return { ...state, slashIndex }
       }
-      if (state.draft === '' && state.entries.length > 0) {
-        const selected = clampSelected(state.entries, state.selected - 1)
-        return { ...state, selected }
-      }
-      return state
+      return applyHistory(state, -1)
     }
     case 'down': {
       if (state.slashOpen) {
@@ -228,11 +296,15 @@ export function applyKey(state: PagerState, key: PagerKey): PagerState {
         const slashIndex = (state.slashIndex + 1) % items.length
         return { ...state, slashIndex }
       }
-      if (state.draft === '' && state.entries.length > 0) {
-        const selected = clampSelected(state.entries, state.selected + 1)
-        return { ...state, selected }
-      }
-      return state
+      return applyHistory(state, 1)
+    }
+    case 'pageup': {
+      if (state.entries.length === 0) return state
+      return { ...state, selected: clampSelected(state.entries, state.selected - 8) }
+    }
+    case 'pagedown': {
+      if (state.entries.length === 0) return state
+      return { ...state, selected: clampSelected(state.entries, state.selected + 8) }
     }
     default:
       return state

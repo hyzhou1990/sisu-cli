@@ -2,7 +2,7 @@
 
 Official publish channel for the SiSu CLI npm package.
 
-One login. Cloud quota. Local workspace. Auth lives in `~/.sisu`, shared with SiSu Desktop. Product development of the CLI still happens in the main SiSu repo; this repository is what `npm publish` and `npm install -g @stevezhou/sisu` use.
+One login. Cloud quota. Local runtime. Auth lives in `~/.sisu`, shared with SiSu Desktop. The CLI is a grok-build-derived local coding agent (read / edit / search / shell + the grok-build extension surface). SiSu cloud plays the Claude/Grok role: device login, model list, billed completions (`POST /api/runtime/complete`). Sessions are local under `~/.sisu/sessions`.
 
 ## Install
 
@@ -29,9 +29,10 @@ Default API is `https://www.sisu.chat`. Override with `--api` or `SISU_API_BASE`
 ## Commands
 
 ```
-sisu                 interactive TUI
+sisu                 interactive TUI (local runtime; Grok Build if the pager binary is present)
 sisu open <dir> --project <id>
 sisu exec "<prompt>"
+sisu -p "<prompt>"
 sisu history
 sisu logout
 ```

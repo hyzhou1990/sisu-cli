@@ -374,39 +374,53 @@ describe('sisu commands', () => {
     fs.rmSync(home, { recursive: true, force: true })
   })
 
-  it('executes a prompt against the logged-in account and bills via /chat/send', async () => {
+  it('executes a prompt via the local runtime and bills through /api/runtime/complete', async () => {
     const home = makeHome()
     process.env.SISU_HOME = home
     writeAuth({ token: 'jwt-token', email: 'ada@example.com', user_id: 'u1', api_base: 'https://www.sisu.chat' })
-    const http = jest.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ id: 'conv-1' }),
-        text: async () => '',
-      })
-      .mockResolvedValueOnce({
+    const http = jest.fn(async (url: string) => {
+      if (String(url).includes('/api/chat/models')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            default_model: 'kimi-k2.5',
+            models: [{ name: 'kimi-k2.5', display_name: 'Kimi K2.5' }],
+          }),
+          text: async () => '',
+        }
+      }
+      return {
         ok: true,
         status: 200,
         json: async () => ({}),
         text: async () => 'event: text\ndata: "ok from cloud"\n\n',
-      })
+      }
+    })
 
     const result = await execCommand('summarize this repo', { newConversation: true }, http)
-    expect(result.conversationId).toBe('conv-1')
     expect(result.text).toBe('ok from cloud')
-    expect(http.mock.calls[0][0]).toBe('https://www.sisu.chat/api/chat/conversations')
-    expect(http.mock.calls[1][0]).toBe('https://www.sisu.chat/api/chat/send')
-    expect(JSON.parse(String(http.mock.calls[0][1]?.body))).toMatchObject({
-      client: 'cli',
-      client_version: require('../package.json').version,
-    })
-    expect(JSON.parse(String(http.mock.calls[1][1]?.body))).toMatchObject({
-      conversation_id: 'conv-1',
-      message: 'summarize this repo',
-      client: 'cli',
-    })
-    expect(JSON.parse(String(http.mock.calls[1][1]?.body)).client_request_id).toBeTruthy()
+    expect(result.conversationId).toBeTruthy()
+    expect(http.mock.calls.map((row) => row[0])).toContain('https://www.sisu.chat/api/chat/models')
+    const completeCall = http.mock.calls.find((row) => String(row[0]).includes('/api/runtime/complete')) as
+      | [string, { body?: string }?]
+      | undefined
+    expect(completeCall?.[0]).toBe('https://www.sisu.chat/api/runtime/complete')
+    const body = JSON.parse(String(completeCall?.[1]?.body || '{}'))
+    expect(body.model).toBe('kimi-k2.5')
+    expect(body.model).not.toBe('sisu-default')
+    expect(body.messages).toEqual([{ role: 'user', content: 'summarize this repo' }])
+    expect(body.tools.map((tool: { function: { name: string } }) => tool.function.name)).toEqual([
+      'read_file',
+      'search_replace',
+      'grep',
+      'bash',
+    ])
+    expect(body.client).toBe('cli')
+    expect(body.client_version).toBe(require('../package.json').version)
+    expect(body.client_request_id).toBeTruthy()
+    expect(body.task_category).toBeUndefined()
+    expect(body.message).toBeUndefined()
     fs.rmSync(home, { recursive: true, force: true })
   })
 
