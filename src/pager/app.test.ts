@@ -668,8 +668,8 @@ it('enters logged out, blocks turns, and completes /login in the pager', async (
   io.feed('/login\r')
   await flush()
   expect(login).toHaveBeenCalled()
-  expect(writes.at(-1)).toContain('logged in as ada@b.c')
   expect(writes.at(-1)).toContain('ada@b.c')
+  expect(writes.at(-1)).not.toContain('Opening browser')
   io.feed('/quit\r')
   await done
 })

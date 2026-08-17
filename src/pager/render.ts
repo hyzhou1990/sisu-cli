@@ -2,6 +2,7 @@ import { displayWidth, SISU_STILL_PHASE, sisuMobiusArt, sisuWelcomeCopy } from '
 import { mobiusFrameHeight, mobiusFrameWidth } from '../mobius'
 import { filterSlash, type PagerEntry, type PagerState } from './model'
 import { getTheme, padVisible, stripAnsi, type PagerTheme, type ThemeName } from './theme'
+import { visibleAssistantText, wrapCells } from './text'
 
 const PROMPT_PREFIX = '› '
 const PROMPT_BOX_ROWS = 2
@@ -9,19 +10,7 @@ const STATUS_ROWS = 1
 const MARK_WIDTH = 2
 
 function wrapPlain(text: string, width: number): string[] {
-  const max = Math.max(1, width)
-  if (!text) return ['']
-  const out: string[] = []
-  for (const paragraph of text.split('\n')) {
-    if (!paragraph) {
-      out.push('')
-      continue
-    }
-    for (let i = 0; i < paragraph.length; i += max) {
-      out.push(paragraph.slice(i, i + max))
-    }
-  }
-  return out
+  return wrapCells(text, width)
 }
 
 function lineCount(text: string): number {
@@ -37,20 +26,22 @@ function paintKind(kind: PagerEntry['kind'], body: string, theme: PagerTheme): s
   return theme.text(body)
 }
 
-function entryPrefix(kind: PagerEntry['kind']): string {
-  if (kind === 'user') return 'you  '
-  if (kind === 'tool') return 'tool '
-  return ''
+function shownText(entry: PagerEntry): string {
+  if (entry.kind === 'assistant') return visibleAssistantText(entry.text)
+  return entry.text
 }
 
 function entryBodyLines(entry: PagerEntry, wrapWidth: number): string[] {
+  const text = shownText(entry)
   if (entry.folded) {
-    const n = lineCount(entry.text)
+    const n = lineCount(text)
     const unit = n === 1 ? 'line' : 'lines'
     return wrapPlain(`${entry.kind} · ${n} ${unit}`, wrapWidth)
   }
-  if (!entry.text) return ['']
-  return wrapPlain(`${entryPrefix(entry.kind)}${entry.text}`, wrapWidth)
+  if (entry.kind === 'user') return ['You', ...wrapPlain(text || ' ', wrapWidth)]
+  if (entry.kind === 'tool') return wrapPlain(text ? `tool  ${text}` : 'tool', wrapWidth)
+  if (!text) return ['']
+  return wrapPlain(text, wrapWidth)
 }
 
 function layoutScrollback(
@@ -65,6 +56,10 @@ function layoutScrollback(
     const entry = state.entries[i]
     const body = entryBodyLines(entry, wrapWidth)
     const selected = i === state.selected && state.entries.length > 0
+    if (i > 0) {
+      lines.push('')
+      entryOf.push(i)
+    }
     for (let j = 0; j < body.length; j += 1) {
       const mark = selected && j === 0 ? theme.accent('▸ ') : '  '
       lines.push(`${mark}${paintKind(entry.kind, body[j], theme)}`)

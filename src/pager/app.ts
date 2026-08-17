@@ -49,21 +49,26 @@ export interface RunPagerOptions {
   introFrames?: number
 }
 
+function shortConversationId(id: string): string {
+  const conv = (id || '').trim()
+  if (!conv || conv === 'new') return ''
+  return conv.length > 12 ? conv.slice(0, 8) : conv
+}
+
 export function formatChromeStatus(
   email: string | undefined,
   quota: string,
-  conversationId: string,
+  conversationId = '',
 ): string {
   const who = (email || '').trim()
+  const conv = shortConversationId(conversationId)
   if (!who) {
-    const conv = (conversationId || '').trim()
-    return conv && conv !== 'new' ? `sisu · not signed in · ${conv}` : 'sisu · not signed in'
+    return conv ? `sisu · not signed in · ${conv}` : 'sisu · not signed in'
   }
   const parts = [who]
   const quotaText = (quota || '').trim()
   if (quotaText && quotaText !== 'quota unavailable') parts.push(quotaText)
-  const conv = (conversationId || '').trim()
-  if (conv && conv !== 'new') parts.push(conv)
+  if (conv) parts.push(conv)
   return parts.join(' · ')
 }
 
@@ -254,20 +259,20 @@ export async function runPager(
             paint()
             return
           }
-          state = pushEntry(state, 'status', 'Opening browser to sign in…')
+          state = { ...state, statusLine: 'Opening browser to sign in…' }
           paint()
           try {
             const email = await options.login((line) => {
               if (!running) return
-              state = pushEntry(state, 'status', line)
+              state = { ...state, statusLine: line }
               paint()
             })
             if (!running) return
             chromeEmail = email
             state = withChrome(state)
-            state = pushEntry(state, 'status', `logged in as ${email}`)
           } catch (err) {
             if (!running) return
+            state = withChrome(state)
             state = pushEntry(state, 'status', err instanceof Error ? err.message : String(err))
           }
           paint()

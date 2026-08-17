@@ -35,6 +35,21 @@ it('vertically centers the welcome so the ring is not glued to the top', () => {
   expect((frame.match(/\/login  browser/g) || []).length).toBe(1)
 })
 
+it('hides leaked think tags from the assistant turn', () => {
+  let state = createPagerState()
+  state = {
+    ...state,
+    entries: [
+      { id: 'a', kind: 'assistant', text: '<think>\nscratch\n</think>\n你好，我可以帮你。', folded: false },
+    ],
+    selected: 0,
+  }
+  const frame = stripAnsi(renderPager(state, 40, 10))
+  expect(frame).toContain('你好')
+  expect(frame).not.toContain('<think>')
+  expect(frame).not.toContain('scratch')
+})
+
 it('paints user and assistant roles differently', () => {
   let state = createPagerState()
   state = {
@@ -46,8 +61,10 @@ it('paints user and assistant roles differently', () => {
     selected: 1,
   }
   const frame = renderPager(state, 40, 10)
-  expect(stripAnsi(frame)).toContain('you  hello from you')
+  expect(stripAnsi(frame)).toContain('You')
+  expect(stripAnsi(frame)).toContain('hello from you')
   expect(stripAnsi(frame)).toContain('hello from sisu')
+  expect(stripAnsi(frame)).not.toContain('you  hello')
 })
 
 it('dark and light themes emit different colors', () => {
