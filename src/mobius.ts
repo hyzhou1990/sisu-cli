@@ -256,9 +256,9 @@ export function renderMobiusFrame(options: MobiusFrameOptions = {}): string {
     if (!color) return ch
     let [r, g, b] = mobiusRgb(cell.t)
     const lift = 0.18 + cell.shade * 0.95 + cell.spec * 0.7
-    r = clamp(Math.round(r * lift), 0, 255)
-    g = clamp(Math.round(g * lift), 0, 255)
-    b = clamp(Math.round(b * lift), 0, 255)
+    r = clamp(Number.isFinite(r * lift) ? Math.round(r * lift) : 180, 0, 255)
+    g = clamp(Number.isFinite(g * lift) ? Math.round(g * lift) : 180, 0, 255)
+    b = clamp(Number.isFinite(b * lift) ? Math.round(b * lift) : 180, 0, 255)
     return `${ansiRgb(r, g, b)}${ch}${RESET}`
   }).join('')).join('\n')
 }

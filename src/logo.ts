@@ -10,10 +10,7 @@ export function sisuMobiusArt(columns = 80, phase = 0, color = false): string {
 }
 
 export function sisuWordmark(): string {
-  return [
-    '                      思   溯',
-    '                      S I S U',
-  ].join('\n')
+  return ['思溯', 'SISU'].join('\n')
 }
 
 export function sisuBanner(columns = 80, phase = 0, color = false): string {

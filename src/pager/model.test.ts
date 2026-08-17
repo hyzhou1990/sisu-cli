@@ -34,6 +34,12 @@ describe('pager model', () => {
     expect(state.entries.at(-1)?.text).toBe('Hello')
   })
 
+  it('lists /login as the in-session sign-in command', () => {
+    const login = SLASH_COMMANDS.find((item) => item.name === '/login')
+    expect(login?.hint).toMatch(/browser/i)
+    expect(SLASH_COMMANDS[0].name).toBe('/login')
+  })
+
   it('describes /ls as local workspace files, not conversations', () => {
     const ls = SLASH_COMMANDS.find((item) => item.name === '/ls')
     expect(ls?.hint).toMatch(/workspace files/i)

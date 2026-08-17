@@ -58,6 +58,7 @@ function readyPager(
     rows?: number
     email?: string
     quota?: () => Promise<string> | string
+    login?: (notify: (line: string) => void) => Promise<string>
   } = {},
 ) {
   let signal!: () => void
@@ -618,6 +619,38 @@ it('keeps client=tui visible on an 80-col frame when quota is a long formatQuota
   expect(status).toContain('client=tui')
   expect(status).not.toContain('wallet 3000')
   expect(status).not.toContain('allowance 200/8000')
+  io.feed('/quit\r')
+  await done
+})
+
+it('enters logged out, blocks turns, and completes /login in the pager', async () => {
+  const writes: string[] = []
+  const io = fakeIo(writes)
+  const login = jest.fn(async (notify: (line: string) => void) => {
+    notify('Open https://www.sisu.chat/api/auth/cli/verify?user_code=AA-11')
+    return 'ada@b.c'
+  })
+  const sent: string[] = []
+  const transport = stubTransport({
+    async *send(prompt) {
+      sent.push(prompt)
+      yield { type: 'text' as const, text: 'should-not-send' }
+      return { conversationId: 'c1' }
+    },
+  })
+  const { done, started } = readyPager(io, transport, { columns: 48, rows: 12, login })
+  await started
+  expect(writes.at(-1)).toContain('Not logged in')
+  expect(writes.at(-1)).toContain('not logged in')
+  io.feed('hello\r')
+  await flush()
+  expect(sent).toEqual([])
+  expect(writes.at(-1)).toMatch(/Type \/login/)
+  io.feed('/login\r')
+  await flush()
+  expect(login).toHaveBeenCalled()
+  expect(writes.at(-1)).toContain('logged in as ada@b.c')
+  expect(writes.at(-1)).toContain('ada@b.c')
   io.feed('/quit\r')
   await done
 })

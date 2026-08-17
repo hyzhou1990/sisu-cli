@@ -1,7 +1,7 @@
 import readline from 'readline'
-import { execCommand, fetchBalance, formatQuota, listConversationsCommand, listLocalCommand, loginCommand, openConversationCommand, setTrainingCommand, statusCommand, type LoginInput } from './commands'
+import { execCommand, fetchBalance, formatQuota, listConversationsCommand, listLocalCommand, loginCommand, openConversationCommand, setTrainingCommand, statusCommand, webLoginCommand, type LoginInput, type WebLoginStart } from './commands'
 import { defaultHttp, HttpClient } from './http'
-import { sisuBanner, sisuMobiusArt, sisuWordmark } from './logo'
+import { sisuMobiusArt, sisuWordmark } from './logo'
 import { mobiusFrameHeight } from './mobius'
 import { runPager, type PagerIo, type RunPagerOptions } from './pager/app'
 import { stdioPagerIo } from './pager/stdio'
@@ -26,6 +26,7 @@ export interface TuiDeps {
   training: typeof setTrainingCommand
   auth: typeof readAuth
   login?: (input: LoginInput) => Promise<string>
+  webLogin?: typeof webLoginCommand
   columns: number
   animate?: boolean
   sleep?: (ms: number) => Promise<void>
@@ -171,6 +172,7 @@ async function promptLogin(
 
 export function tuiHelp(): string {
   return [
+    '/login      sign in with the browser',
     '/status     account and quota',
     '/ls         local workspace files',
     '/history    saved cloud conversations',
@@ -195,26 +197,24 @@ export async function runTui(
   const openThread = deps.openThread ?? openConversationCommand
   const training = deps.training ?? setTrainingCommand
   const auth = deps.auth ?? readAuth
+  const webLogin = deps.webLogin ?? webLoginCommand
   const columns = deps.columns ?? process.stdout.columns ?? 80
   const animate = deps.animate ?? shouldAnimateSplash()
-  const color = deps.color ?? Boolean(process.stdout.isTTY)
 
   try {
+  io.write(`\n${sisuWordmark()}\n\n`)
   if (animate) {
-    await playMobiusIntro(io, { columns, sleep: deps.sleep, color })
-  } else {
-    io.write(`${sisuBanner(columns, 0.35, color)}\n`)
+    await (deps.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms))))(80)
   }
-  let account = auth()
-  if (!account) {
-    const login = deps.login ?? loginCommand
-    const result = await promptLogin(io, login)
-    if (result !== 'ok') return 2
-    account = auth()
-    if (!account) {
-      io.write('login did not persist auth\n')
-      return 2
-    }
+  const account = auth()
+
+  const startWebLogin = async (notify: (line: string) => void): Promise<string> => {
+    return webLogin({
+      onStart: (info: WebLoginStart) => {
+        notify(`Open ${info.verification_uri_complete}`)
+        notify(`Confirm code ${info.user_code}`)
+      },
+    }, http)
   }
 
   if (deps.pager || shouldUsePager(deps)) {
@@ -222,7 +222,8 @@ export async function runTui(
     const transport = createFastApiTransport(http)
     return await (deps.pager ?? runPager)(stdioPagerIo(), transport, {
       columns,
-      email: account.email,
+      email: account?.email,
+      login: startWebLogin,
       quota: async () => formatQuota(await fetchBalance(http)),
       status: () => status(http),
       ls: () => {
@@ -237,12 +238,22 @@ export async function runTui(
   }
 
   io.write(`${await status(http)}\n`)
+  if (!account) io.write('Not logged in. Type /login to sign in with your browser.\n')
   io.write(`${tuiHelp()}\n\n`)
 
   let newConversation = false
   while (true) {
     const raw = (await io.question('› ')).trim()
     if (!raw) continue
+    if (raw === '/login') {
+      try {
+        const email = await startWebLogin((line) => io.write(`${line}\n`))
+        io.write(`logged in as ${email}\n`)
+      } catch (error) {
+        io.write(`${error instanceof Error ? error.message : String(error)}\n`)
+      }
+      continue
+    }
     if (raw === '/quit' || raw === '/exit') {
       io.write('bye\n')
       return 0

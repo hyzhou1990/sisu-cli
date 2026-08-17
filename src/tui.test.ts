@@ -19,113 +19,49 @@ function scriptedIo(answers: string[]) {
 }
 
 describe('sisu tui', () => {
-  it('cancels login when email is empty', async () => {
-    const { io, written } = scriptedIo([''])
-    const login = jest.fn()
-    const pager = jest.fn()
+  it('enters the pager logged out and does not ask for email', async () => {
+    const { io, written } = scriptedIo([])
+    const pager = jest.fn().mockResolvedValue(0)
     const code = await runTui(io, {
       auth: () => null,
-      login,
       pager,
       columns: 80,
       animate: false,
       color: false,
     })
-    expect(code).toBe(2)
-    expect(written.join('')).toMatch(/login cancelled/)
-    expect(written.join('')).not.toMatch(/Not logged in/)
-    expect(login).not.toHaveBeenCalled()
-    expect(pager).not.toHaveBeenCalled()
+    expect(code).toBe(0)
+    expect(written.join('')).toMatch(/思溯/)
+    expect(written.join('')).not.toMatch(/Email:/)
+    expect(pager).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ login: expect.any(Function) }),
+    )
   })
 
-  it('uses injected password I/O even when process.stdin is a TTY', async () => {
-    const stdin = process.stdin as NodeJS.ReadStream & { isTTY?: boolean }
-    const previous = stdin.isTTY
-    stdin.isTTY = true
-    const { io, written } = scriptedIo(['ada@b.c', 'secret', '/quit'])
-    let loggedIn = false
-    try {
-      const login = jest.fn(async (input) => {
-        loggedIn = true
-        expect(input.password).toBe('secret')
-        return 'ada@b.c'
+  it('signs in from /login in the line TUI', async () => {
+    const { io, written } = scriptedIo(['/login', '/quit'])
+    const webLogin = jest.fn(async (input: { onStart?: (info: { verification_uri: string; verification_uri_complete: string; user_code: string }) => void } = {}) => {
+      input.onStart?.({
+        verification_uri: 'https://www.sisu.chat/api/auth/cli/verify',
+        verification_uri_complete: 'https://www.sisu.chat/api/auth/cli/verify?user_code=AA-11',
+        user_code: 'AA-11',
       })
-      const code = await runTui(io, {
-        auth: () => (loggedIn
-          ? { token: 't', email: 'ada@b.c', user_id: 'u', api_base: 'https://www.sisu.chat' }
-          : null),
-        login,
-        animate: false,
-        color: false,
-        columns: 80,
-        status: async () => 'user ada@b.c',
-        exec: jest.fn(),
-      })
-      expect(code).toBe(0)
-      expect(login).toHaveBeenCalledTimes(1)
-      expect(written.join('')).toMatch(/logged in as ada@b\.c/)
-    } finally {
-      stdin.isTTY = previous
-    }
-  })
-
-  it('cancels login when password prompt receives Ctrl+C', async () => {
-    const { io, written } = scriptedIo(['ada@b.c', '\u0003'])
-    const login = jest.fn()
-    const pager = jest.fn()
-    const code = await runTui(io, {
-      auth: () => null,
-      login,
-      pager,
-      columns: 80,
-      animate: false,
-      color: false,
-    })
-    expect(code).toBe(2)
-    expect(written.join('')).toMatch(/login cancelled/)
-    expect(login).not.toHaveBeenCalled()
-    expect(pager).not.toHaveBeenCalled()
-  })
-
-  it('logs in from the splash prompt and continues', async () => {
-    const { io, written } = scriptedIo(['ada@b.c', 'secret', '/quit'])
-    let loggedIn = false
-    const login = jest.fn(async (input) => {
-      loggedIn = true
-      expect(input).toMatchObject({ email: 'ada@b.c', password: 'secret' })
       return 'ada@b.c'
     })
     const code = await runTui(io, {
-      auth: () => (loggedIn
-        ? { token: 't', email: 'ada@b.c', user_id: 'u', api_base: 'https://www.sisu.chat' }
-        : null),
-      login,
+      auth: () => null,
+      webLogin,
       animate: false,
       color: false,
       columns: 80,
-      status: async () => 'user ada@b.c',
+      status: async () => 'user logged out',
       exec: jest.fn(),
     })
     expect(code).toBe(0)
-    expect(login).toHaveBeenCalledTimes(1)
+    expect(webLogin).toHaveBeenCalled()
+    expect(written.join('')).toMatch(/Open https:\/\/www\.sisu\.chat\/api\/auth\/cli\/verify/)
     expect(written.join('')).toMatch(/logged in as ada@b\.c/)
-  })
-
-  it('exits 2 when login throws and does not start the pager', async () => {
-    const { io, written } = scriptedIo(['ada@b.c', 'bad'])
-    const login = jest.fn(async () => { throw new Error('login failed (401)') })
-    const pager = jest.fn()
-    const code = await runTui(io, {
-      auth: () => null,
-      login,
-      pager,
-      columns: 80,
-      animate: false,
-      color: false,
-    })
-    expect(code).toBe(2)
-    expect(written.join('')).toContain('login failed (401)')
-    expect(pager).not.toHaveBeenCalled()
   })
 
   it('routes slash commands and billed prompts', async () => {
@@ -182,7 +118,7 @@ describe('sisu tui', () => {
     const out = written.join('')
     expect(out).toContain('\x1b[?25l')
     expect((out.match(/\x1b\[\d+A/g) || []).length).toBe(5)
-    expect(out).toMatch(/思   溯/)
+    expect(out).toMatch(/思溯/)
   })
 
   it('disables the splash when SISU_TUI_STATIC=1', () => {

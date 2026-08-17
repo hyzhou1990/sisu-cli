@@ -42,6 +42,7 @@ export interface RunPagerOptions {
   status?: () => Promise<string> | string
   ls?: () => Promise<string> | string
   training?: (on: boolean) => Promise<string> | string
+  login?: (notify: (line: string) => void) => Promise<string>
 }
 
 export function formatChromeStatus(
@@ -50,7 +51,7 @@ export function formatChromeStatus(
   conversationId: string,
 ): string {
   const parts = [
-    (email || '').trim(),
+    (email || '').trim() || 'not logged in',
     (quota || '').trim() || 'quota unavailable',
     conversationId || 'new',
     'client=tui',
@@ -114,9 +115,10 @@ export async function runPager(
   const rows = options.rows ?? io.rows
   let theme: ThemeName = options.theme ?? 'dark'
   let quotaLine = 'quota unavailable'
+  let chromeEmail = (options.email || '').trim()
   const withChrome = (next: PagerState): PagerState => ({
     ...next,
-    statusLine: formatChromeStatus(options.email, quotaLine, next.conversationId),
+    statusLine: formatChromeStatus(chromeEmail, quotaLine, next.conversationId),
   })
   const refreshQuota = async () => {
     if (!options.quota) return
@@ -127,6 +129,9 @@ export async function runPager(
     }
   }
   let state = withChrome(createPagerState())
+  if (!chromeEmail && options.login) {
+    state = pushEntry(state, 'status', 'Not logged in. Type /login to sign in with your browser.')
+  }
   let rest = ''
   let newConversation = false
   let pickMode = false
@@ -224,6 +229,31 @@ export async function runPager(
         state = clearDraft(state)
         if (head === '/quit') {
           finish(0)
+          return
+        }
+        if (head === '/login') {
+          if (!options.login) {
+            state = pushEntry(state, 'status', 'not wired')
+            paint()
+            return
+          }
+          state = pushEntry(state, 'status', 'Opening browser to sign in…')
+          paint()
+          try {
+            const email = await options.login((line) => {
+              if (!running) return
+              state = pushEntry(state, 'status', line)
+              paint()
+            })
+            if (!running) return
+            chromeEmail = email
+            state = withChrome(state)
+            state = pushEntry(state, 'status', `logged in as ${email}`)
+          } catch (err) {
+            if (!running) return
+            state = pushEntry(state, 'status', err instanceof Error ? err.message : String(err))
+          }
+          paint()
           return
         }
         if (head === '/new') {
@@ -324,6 +354,12 @@ export async function runPager(
       }
 
       const sendTurn = async (prompt: string): Promise<void> => {
+        if (!chromeEmail && options.login) {
+          state = pushEntry(state, 'status', 'Not logged in. Type /login to sign in.')
+          state = clearDraft(state)
+          paint()
+          return
+        }
         state = pushEntry(state, 'user', prompt)
         state = startAssistant(state)
         state = clearDraft(state)

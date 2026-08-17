@@ -24,6 +24,7 @@ export type PagerKey =
   | { type: 'enter' | 'backspace' | 'up' | 'down' | 'left' | 'right' | 'escape' }
 
 export const SLASH_COMMANDS: Array<{ name: string; hint: string }> = [
+  { name: '/login', hint: 'Sign in with the browser' },
   { name: '/new', hint: 'Start a new conversation (alias: /clear)' },
   { name: '/resume', hint: 'Resume a conversation (alias: /history)' },
   { name: '/status', hint: 'Show session status' },
