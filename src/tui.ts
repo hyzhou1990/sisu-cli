@@ -1,7 +1,7 @@
 import readline from 'readline'
 import { execCommand, fetchBalance, formatQuota, listConversationsCommand, listLocalCommand, loginCommand, openConversationCommand, setTrainingCommand, statusCommand, webLoginCommand, type LoginInput, type WebLoginStart } from './commands'
 import { defaultHttp, HttpClient } from './http'
-import { sisuMobiusArt, sisuWordmark } from './logo'
+import { sisuMobiusArt, sisuSplash, sisuWordmark } from './logo'
 import { mobiusFrameHeight } from './mobius'
 import { runPager, type PagerIo, type RunPagerOptions } from './pager/app'
 import { stdioPagerIo } from './pager/stdio'
@@ -202,7 +202,7 @@ export async function runTui(
   const animate = deps.animate ?? shouldAnimateSplash()
 
   try {
-  io.write(`\n${sisuWordmark()}\n\n`)
+  io.write(`${sisuSplash(columns, true)}\n`)
   if (animate) {
     await (deps.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms))))(80)
   }

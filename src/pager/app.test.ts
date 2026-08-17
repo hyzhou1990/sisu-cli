@@ -636,7 +636,7 @@ it('enters logged out, blocks turns, and completes /login in the pager', async (
   const { done, started } = readyPager(io, transport, { columns: 48, rows: 12, login })
   await started
   expect(writes.at(-1)).toContain('not signed in')
-  expect(writes.at(-1)).toContain('SISU')
+  expect(writes.at(-1)).toMatch(/▄|█|▀/)
   expect(writes.at(-1)).toContain('/login')
   io.feed('hello\r')
   await flush()

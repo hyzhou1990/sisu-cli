@@ -1,3 +1,4 @@
+import { sisuMarkArt, sisuMarkLines } from '../mark'
 import { filterSlash, type PagerEntry, type PagerState } from './model'
 import { getTheme, padVisible, stripAnsi, type PagerTheme, type ThemeName } from './theme'
 
@@ -100,25 +101,26 @@ function isIdleWelcome(state: PagerState): boolean {
   return !state.conversationId && state.entries.length === 0
 }
 
-function center(text: string, width: number): string {
-  const padLeft = Math.max(0, Math.floor((width - text.length) / 2))
+function center(text: string, width: number, vis = stripAnsi(text).length): string {
+  const padLeft = Math.max(0, Math.floor((width - vis) / 2))
   return `${' '.repeat(padLeft)}${text}`
 }
 
-function welcomeLines(guest: boolean, width: number, theme: PagerTheme): string[] {
-  const title = theme.accent(center('SISU', width))
+function welcomeLines(guest: boolean, width: number, height: number, theme: PagerTheme): string[] {
+  const markCols = height >= 20 && width >= 48 ? width : 40
+  const raw = sisuMarkLines(markCols)
+  const painted = sisuMarkArt(markCols, true).split('\n')
+  const mark = painted.map((line, i) => center(line, width, raw[i]?.length ?? stripAnsi(line).length))
   if (guest) {
     return [
-      title,
+      ...mark,
       '',
       theme.text(center('Sign in to start a conversation.', width)),
-      '',
-      theme.dim(center('/login    browser', width)),
-      theme.dim(center('/help     commands', width)),
+      theme.dim(center('/login  browser    /help  commands', width)),
     ]
   }
   return [
-    title,
+    ...mark,
     '',
     theme.dim(center('Ask anything, or type /help.', width)),
   ]
@@ -158,7 +160,7 @@ export function renderPager(
   const slash = slashMenuLines(state, theme)
   const slashTake = Math.min(slash.length, bodyBudget)
   const guest = !(state.statusLine || '').trim() || (state.statusLine || '').includes('not signed in')
-  const welcome = isIdleWelcome(state) ? welcomeLines(guest, width, theme) : []
+  const welcome = isIdleWelcome(state) ? welcomeLines(guest, width, height, theme) : []
   const welcomeTake = Math.min(welcome.length, Math.max(0, bodyBudget - slashTake))
   const scrollBudget = bodyBudget - slashTake - welcomeTake
 
