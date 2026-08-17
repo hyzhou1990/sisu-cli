@@ -1,18 +1,15 @@
-/** SiSu pager palette: blue → purple → gold (same anchors as mobiusRgb). */
+/** SiSu pager palette: blue → purple → gold. */
 
 export type ThemeName = 'dark' | 'light'
 
 export interface PagerTheme {
-  /** Wrap text in the primary foreground color. */
   text: (s: string) => string
-  /** Muted secondary text. */
   dim: (s: string) => string
-  /** Brand accent (gold). */
   accent: (s: string) => string
-  /** Error / alert (red). */
   error: (s: string) => string
-  /** Borders and chrome (blue/purple). */
   border: (s: string) => string
+  user: (s: string) => string
+  tool: (s: string) => string
   reset: string
 }
 
@@ -26,17 +23,18 @@ function paint(prefix: string): (s: string) => string {
   return (s: string) => (s ? `${prefix}${s}${RESET}` : s)
 }
 
-/** Brand anchors from mobiusRgb (blue, purple, gold). */
 const BLUE = ansiRgb(37, 99, 235)
 const PURPLE = ansiRgb(124, 58, 237)
 const GOLD = ansiRgb(217, 119, 6)
 
 const DARK: PagerTheme = {
   text: paint(ansiRgb(230, 232, 240)),
-  dim: paint(ansiRgb(120, 126, 150)),
+  dim: paint(ansiRgb(118, 124, 148)),
   accent: paint(GOLD),
   error: paint(ansiRgb(239, 68, 68)),
-  border: paint(PURPLE),
+  border: paint(ansiRgb(72, 64, 96)),
+  user: paint(ansiRgb(156, 174, 214)),
+  tool: paint(PURPLE),
   reset: RESET,
 }
 
@@ -46,6 +44,8 @@ const LIGHT: PagerTheme = {
   accent: paint(GOLD),
   error: paint(ansiRgb(185, 28, 28)),
   border: paint(BLUE),
+  user: paint(ansiRgb(37, 99, 180)),
+  tool: paint(PURPLE),
   reset: RESET,
 }
 
@@ -53,7 +53,45 @@ export function getTheme(name: ThemeName = 'dark'): PagerTheme {
   return name === 'light' ? LIGHT : DARK
 }
 
-/** Strip 24-bit / SGR sequences for visible-width measurement. */
 export function stripAnsi(s: string): string {
   return s.replace(/\x1b\[[0-9;]*m/g, '')
+}
+
+export function visibleWidth(line: string): number {
+  return stripAnsi(line).length
+}
+
+export function clipVisible(line: string, width: number): string {
+  if (width <= 0) return ''
+  if (visibleWidth(line) <= width) return line
+  let seen = 0
+  let out = ''
+  const re = /\x1b\[[0-9;]*m/g
+  let last = 0
+  let match = re.exec(line)
+  while (match) {
+    for (let i = last; i < match.index && seen < width; i += 1) {
+      out += line[i]
+      seen += 1
+    }
+    if (seen >= width) break
+    out += match[0]
+    last = match.index + match[0].length
+    match = re.exec(line)
+  }
+  for (let i = last; i < line.length && seen < width; i += 1) {
+    if (line[i] === '\x1b') break
+    out += line[i]
+    seen += 1
+  }
+  return out + RESET
+}
+
+export function padVisible(line: string, cols: number): string {
+  const width = Math.max(0, cols)
+  if (width === 0) return ''
+  const vis = visibleWidth(line)
+  if (vis === width) return line
+  if (vis > width) return clipVisible(line, width)
+  return `${line}${' '.repeat(width - vis)}`
 }
