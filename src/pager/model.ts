@@ -25,8 +25,13 @@ export type PagerKey =
 
 export const SLASH_COMMANDS: Array<{ name: string; hint: string }> = [
   { name: '/login', hint: 'Sign in with the browser' },
+  { name: '/logout', hint: 'Sign out of this terminal' },
   { name: '/new', hint: 'Start a new conversation (alias: /clear)' },
   { name: '/resume', hint: 'Resume a conversation (alias: /history)' },
+  { name: '/model', hint: 'Switch model (alias: /m)' },
+  { name: '/models', hint: 'List models available to your account' },
+  { name: '/copy', hint: 'Copy the last assistant reply' },
+  { name: '/export', hint: 'Write this conversation to a markdown file' },
   { name: '/status', hint: 'Show session status' },
   { name: '/ls', hint: 'List local workspace files' },
   { name: '/training', hint: 'Training mode' },
@@ -40,6 +45,7 @@ const SLASH_ALIASES: Record<string, string> = {
   '/clear': '/new',
   '/history': '/resume',
   '/exit': '/quit',
+  '/m': '/model',
 }
 
 let nextEntryId = 1

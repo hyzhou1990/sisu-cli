@@ -306,7 +306,7 @@ export async function execCommand(
       headers: authHeaders(auth.token),
       body: JSON.stringify({
         title: text.slice(0, 50),
-        model: options.model || undefined,
+        model: options.model || readSession().last_model || undefined,
         project_id: options.projectId || readSession().last_project_id || undefined,
         client: stamp.client,
         client_version: stamp.client_version,
@@ -324,7 +324,7 @@ export async function execCommand(
     body: JSON.stringify({
       conversation_id: conversationId,
       message: text,
-      model: options.model || undefined,
+      model: options.model || readSession().last_model || undefined,
       task_category: 'coding',
       client: stamp.client,
       client_version: stamp.client_version,
@@ -377,4 +377,68 @@ export async function setTrainingCommand(optIn: boolean, http: HttpClient = defa
   const body = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(errorDetail(body, `training update failed (${response.status})`))
   return optIn ? 'training opt-in on (new turns may be used if eligible)' : 'training opt-in off'
+}
+
+export interface CatalogModel {
+  name: string
+  label: string
+}
+
+function normalizeModelKey(value: string): string {
+  return value.toLowerCase().replace(/[-_.\s]/g, '')
+}
+
+export async function fetchModelCatalog(http: HttpClient = defaultHttp): Promise<{
+  models: CatalogModel[]
+  defaultModel: string
+}> {
+  const auth = requireAuth()
+  const response = await http(`${auth.api_base}/api/chat/models`, { headers: authHeaders(auth.token) })
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(errorDetail(body, `models failed (${response.status})`))
+  const rows = Array.isArray(body?.models) ? body.models : []
+  const models = rows
+    .map((row: { name?: string; display_name?: string; label?: string }) => {
+      const name = String(row?.name || '').trim()
+      if (!name) return null
+      return { name, label: String(row.display_name || row.label || name) }
+    })
+    .filter((row: CatalogModel | null): row is CatalogModel => Boolean(row))
+  return { models, defaultModel: String(body?.default_model || '') }
+}
+
+export function resolveCatalogModel(query: string, models: CatalogModel[]): CatalogModel | undefined {
+  const needle = normalizeModelKey(query)
+  if (!needle) return undefined
+  return (
+    models.find((row) => normalizeModelKey(row.name) === needle) ||
+    models.find((row) => normalizeModelKey(row.label) === needle) ||
+    models.find((row) => normalizeModelKey(row.name).includes(needle) || normalizeModelKey(row.label).includes(needle))
+  )
+}
+
+export async function listModelsCommand(http: HttpClient = defaultHttp): Promise<string> {
+  const { models, defaultModel } = await fetchModelCatalog(http)
+  const current = readSession().last_model || defaultModel
+  if (!current && !models.length) return 'no models available'
+  const lines = models.map((row) => {
+    const mark = row.name === current ? '* ' : '  '
+    const extra = row.label !== row.name ? `  ${row.label}` : ''
+    return `${mark}${row.name}${extra}`
+  })
+  if (current && !models.some((row) => row.name === current)) {
+    lines.unshift(`* ${current}`)
+  }
+  return lines.join('\n') || `* ${current}`
+}
+
+export async function setModelCommand(query: string, http: HttpClient = defaultHttp): Promise<string> {
+  const wanted = query.trim()
+  if (!wanted) return listModelsCommand(http)
+  const { models, defaultModel } = await fetchModelCatalog(http)
+  const match = resolveCatalogModel(wanted, models)
+  const name = match?.name || (normalizeModelKey(wanted) === normalizeModelKey(defaultModel) ? defaultModel : '')
+  if (!name) throw new Error(`unknown model ${wanted}`)
+  writeSession({ ...readSession(), last_model: name })
+  return `model ${name}`
 }

@@ -2,7 +2,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { runPager, PagerIo, chromeShortQuota } from './app'
-import { readSession } from '../store'
+import { readSession, writeSession } from '../store'
 import type { TurnTransport } from '../transport'
 
 const previousHome = process.env.SISU_HOME
@@ -59,6 +59,9 @@ function readyPager(
     email?: string
     quota?: () => Promise<string> | string
     login?: (notify: (line: string) => void) => Promise<string>
+    setModel?: (name: string) => Promise<string> | string
+    models?: () => Promise<string> | string
+    logout?: () => void
     intro?: boolean
     introFrames?: number
     sleep?: (ms: number) => Promise<void>
@@ -670,6 +673,29 @@ it('enters logged out, blocks turns, and completes /login in the pager', async (
   expect(login).toHaveBeenCalled()
   expect(writes.at(-1)).toContain('ada@b.c')
   expect(writes.at(-1)).not.toContain('Opening browser')
+  io.feed('/quit\r')
+  await done
+})
+
+it('switches models from /model and shows the name in chrome', async () => {
+  const writes: string[] = []
+  const io = fakeIo(writes)
+  const setModel = jest.fn(async (name: string) => {
+    writeSession({ ...readSession(), last_model: name })
+    return `model ${name}`
+  })
+  const { done, started } = readyPager(io, stubTransport(), {
+    columns: 48,
+    rows: 12,
+    email: 'ada@b.c',
+    setModel,
+  })
+  await started
+  io.feed('/model grok-4.6\r')
+  await flush()
+  expect(setModel).toHaveBeenCalledWith('grok-4.6')
+  expect(writes.at(-1)).toContain('model grok-4.6')
+  expect(writes.at(-1)).toContain('grok-4.6')
   io.feed('/quit\r')
   await done
 })

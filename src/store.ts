@@ -16,6 +16,7 @@ export interface AuthRecord {
 export interface SessionRecord {
   last_conversation_id?: string
   last_project_id?: string
+  last_model?: string
 }
 
 export function getSisuHome(): string {
@@ -144,6 +145,7 @@ export function describeStatus(): {
   plan_code: string
   api_base: string
   workspaces: Record<string, string>
+  model: string
 } {
   const auth = readAuth()
   return {
@@ -154,5 +156,6 @@ export function describeStatus(): {
     plan_code: auth?.plan_code || '',
     api_base: auth?.api_base || process.env.SISU_API_BASE || DEFAULT_API_BASE,
     workspaces: readWorkspaces(),
+    model: readSession().last_model || '',
   }
 }

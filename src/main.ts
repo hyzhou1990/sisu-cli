@@ -3,10 +3,12 @@ import {
   execCommand,
   listConversationsCommand,
   listLocalCommand,
+  listModelsCommand,
   loginCommand,
   logoutCommand,
   openCommand,
   openConversationCommand,
+  setModelCommand,
   setTrainingCommand,
   statusCommand,
   webLoginCommand,
@@ -33,6 +35,8 @@ Usage:
   sisu open <dir> --project <project-id>
   sisu ls [--project <project-id>]
   sisu exec "<prompt>" [--project <id>] [--model <name>] [--new]
+  sisu models
+  sisu model <name>
   sisu history
   sisu thread <conversation-id>
   sisu training --on|--off
@@ -157,6 +161,15 @@ export async function runCli(
   if (command === 'thread') {
     const id = args.find((item) => !item.startsWith('--')) || ''
     process.stdout.write(`${openConversationCommand(id)}\n`)
+    return 0
+  }
+  if (command === 'models') {
+    process.stdout.write(`${await listModelsCommand(http)}\n`)
+    return 0
+  }
+  if (command === 'model') {
+    const name = args.find((item) => !item.startsWith('--')) || ''
+    process.stdout.write(`${await setModelCommand(name, http)}\n`)
     return 0
   }
   if (command === 'training') {

@@ -77,6 +77,7 @@ export function createFastApiTransport(http: HttpClient): TurnTransport {
           headers: authHeaders(auth.token),
           body: JSON.stringify({
             title: text.slice(0, 50),
+            model: session.last_model || undefined,
             project_id: session.last_project_id || undefined,
             client: stamp.client,
             client_version: stamp.client_version,
@@ -100,6 +101,7 @@ export function createFastApiTransport(http: HttpClient): TurnTransport {
         body: JSON.stringify({
           conversation_id: conversationId,
           message: text,
+          model: session.last_model || undefined,
           task_category: 'coding',
           client: stamp.client,
           client_version: stamp.client_version,

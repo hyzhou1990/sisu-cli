@@ -1,5 +1,5 @@
 import readline from 'readline'
-import { execCommand, fetchBalance, formatQuota, listConversationsCommand, listLocalCommand, loginCommand, openConversationCommand, setTrainingCommand, statusCommand, webLoginCommand, type LoginInput, type WebLoginStart } from './commands'
+import { execCommand, fetchBalance, formatQuota, listConversationsCommand, listLocalCommand, listModelsCommand, loginCommand, logoutCommand, openConversationCommand, setModelCommand, setTrainingCommand, statusCommand, webLoginCommand, type LoginInput, type WebLoginStart } from './commands'
 import { defaultHttp, HttpClient } from './http'
 import { sisuMobiusArt, sisuSplash, sisuSplashFrame, sisuSplashHeight, sisuWordmark } from './logo'
 import { mobiusFrameHeight } from './mobius'
@@ -200,6 +200,11 @@ async function promptLogin(
 export function tuiHelp(): string {
   return [
     '/login      sign in with the browser',
+    '/logout     sign out',
+    '/model      switch model (alias /m)',
+    '/models     list available models',
+    '/copy       copy last reply to ~/.sisu/last-copy.txt',
+    '/export     write the thread to a markdown file',
     '/status     account and quota',
     '/ls         local workspace files',
     '/history    saved cloud conversations',
@@ -259,6 +264,9 @@ export async function runTui(
       columns,
       email: account?.email,
       login: startWebLogin,
+      logout: logoutCommand,
+      models: () => listModelsCommand(http),
+      setModel: (name: string) => setModelCommand(name, http),
       intro: animate,
       sleep: deps.sleep,
       quota: async () => formatQuota(await fetchBalance(http)),

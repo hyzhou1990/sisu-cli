@@ -1,4 +1,6 @@
-import { readSession, writeSession } from '../store'
+import fs from 'fs'
+import path from 'path'
+import { getSisuHome, readSession, writeSession } from '../store'
 import type { TurnTransport } from '../transport'
 import { decodeKeys } from './input'
 import {
@@ -16,6 +18,7 @@ import {
 } from './model'
 import { entriesFromMessages } from './history'
 import { SISU_STILL_PHASE } from '../logo'
+import { visibleAssistantText } from './text'
 import { renderPager } from './render'
 import type { ThemeName } from './theme'
 
@@ -43,6 +46,9 @@ export interface RunPagerOptions {
   ls?: () => Promise<string> | string
   training?: (on: boolean) => Promise<string> | string
   login?: (notify: (line: string) => void) => Promise<string>
+  logout?: () => void
+  models?: () => Promise<string> | string
+  setModel?: (name: string) => Promise<string> | string
   /** Play the Möbius twist in the pager grid before taking input. */
   intro?: boolean
   sleep?: (ms: number) => Promise<void>
@@ -59,13 +65,16 @@ export function formatChromeStatus(
   email: string | undefined,
   quota: string,
   conversationId = '',
+  model = '',
 ): string {
   const who = (email || '').trim()
   const conv = shortConversationId(conversationId)
+  const modelName = (model || '').trim()
   if (!who) {
     return conv ? `sisu · not signed in · ${conv}` : 'sisu · not signed in'
   }
   const parts = [who]
+  if (modelName) parts.push(modelName)
   const quotaText = (quota || '').trim()
   if (quotaText && quotaText !== 'quota unavailable') parts.push(quotaText)
   if (conv) parts.push(conv)
@@ -112,6 +121,7 @@ function commandHead(text: string): string {
   if (token === '/exit') return '/quit'
   if (token === '/clear') return '/new'
   if (token === '/history') return '/resume'
+  if (token === '/m') return '/model'
   return token
 }
 
@@ -129,9 +139,10 @@ export async function runPager(
   let theme: ThemeName = options.theme ?? 'dark'
   let quotaLine = 'quota unavailable'
   let chromeEmail = (options.email || '').trim()
+  let chromeModel = (readSession().last_model || '').trim()
   const withChrome = (next: PagerState): PagerState => ({
     ...next,
-    statusLine: formatChromeStatus(chromeEmail, quotaLine, next.conversationId),
+    statusLine: formatChromeStatus(chromeEmail, quotaLine, next.conversationId, chromeModel),
   })
   const refreshQuota = async () => {
     if (!options.quota) return
@@ -325,6 +336,71 @@ export async function runPager(
           } else {
             await openConversation(id)
           }
+          paint()
+          return
+        }
+        if (head === '/logout') {
+          options.logout?.()
+          chromeEmail = ''
+          chromeModel = ''
+          state = withChrome(state)
+          state = pushEntry(state, 'status', 'signed out')
+          paint()
+          return
+        }
+        if (head === '/models' || (head === '/model' && !text.replace(/^\S+\s*/, '').trim())) {
+          const body = options.models ? await resolveText(options.models()) : 'not wired'
+          if (!running) return
+          state = pushEntry(state, 'status', body)
+          paint()
+          return
+        }
+        if (head === '/model') {
+          const wanted = text.replace(/^\S+\s*/, '').trim()
+          if (!options.setModel) {
+            state = pushEntry(state, 'status', 'not wired')
+          } else {
+            try {
+              const body = await resolveText(options.setModel(wanted))
+              if (!running) return
+              chromeModel = (readSession().last_model || wanted).trim()
+              state = withChrome(state)
+              state = pushEntry(state, 'status', body)
+            } catch (err) {
+              if (!running) return
+              state = pushEntry(state, 'status', err instanceof Error ? err.message : String(err))
+            }
+          }
+          paint()
+          return
+        }
+        if (head === '/copy') {
+          const last = [...state.entries].reverse().find((entry) => entry.kind === 'assistant')
+          const body = last ? visibleAssistantText(last.text).trim() : ''
+          if (!body) {
+            state = pushEntry(state, 'status', 'nothing to copy')
+          } else {
+            const dest = path.join(getSisuHome(), 'last-copy.txt')
+            fs.mkdirSync(getSisuHome(), { recursive: true })
+            fs.writeFileSync(dest, `${body}\n`, 'utf8')
+            state = pushEntry(state, 'status', `copied to ${dest}`)
+          }
+          paint()
+          return
+        }
+        if (head === '/export') {
+          const dest = text.replace(/^\S+\s*/, '').trim() || path.join(getSisuHome(), 'export.md')
+          const body = state.entries
+            .map((entry) => {
+              if (entry.kind === 'user') return `## You\n\n${entry.text}`
+              if (entry.kind === 'assistant') return `## SiSu\n\n${visibleAssistantText(entry.text)}`
+              return ''
+            })
+            .filter(Boolean)
+            .join('\n\n')
+          fs.mkdirSync(path.dirname(path.resolve(dest)), { recursive: true })
+          fs.writeFileSync(path.resolve(dest), `${body}\n`, 'utf8')
+          state = pushEntry(state, 'status', `exported ${path.resolve(dest)}`)
           paint()
           return
         }

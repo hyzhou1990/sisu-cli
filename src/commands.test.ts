@@ -6,16 +6,18 @@ import {
   formatQuota,
   listConversationsCommand,
   listLocalCommand,
+  listModelsCommand,
   loginCommand,
   logoutCommand,
   openBrowserSafely,
   openCommand,
   openConversationCommand,
   resolveVerificationUrl,
+  setModelCommand,
   statusCommand,
   webLoginCommand,
 } from './commands'
-import { readAuth, writeAuth } from './store'
+import { readAuth, readSession, writeAuth } from './store'
 
 function makeHome(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-cmd-'))
@@ -405,6 +407,30 @@ describe('sisu commands', () => {
       client: 'cli',
     })
     expect(JSON.parse(String(http.mock.calls[1][1]?.body)).client_request_id).toBeTruthy()
+    fs.rmSync(home, { recursive: true, force: true })
+  })
+
+  it('lists and switches models from /api/chat/models', async () => {
+    const home = makeHome()
+    process.env.SISU_HOME = home
+    writeAuth({ token: 'tok', email: 'ada@example.com', user_id: 'u1', api_base: 'https://www.sisu.chat' })
+    const http = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        default_model: 'grok-4.6',
+        models: [
+          { name: 'grok-4.6', display_name: 'Grok 4.6' },
+          { name: 'kimi-code', display_name: 'Kimi Code' },
+        ],
+      }),
+    })
+    const listed = await listModelsCommand(http)
+    expect(listed).toContain('* grok-4.6')
+    expect(listed).toContain('kimi-code')
+    expect(await setModelCommand('Kimi Code', http)).toBe('model kimi-code')
+    expect(readSession().last_model).toBe('kimi-code')
+    await expect(setModelCommand('nope', http)).rejects.toThrow(/unknown model/)
     fs.rmSync(home, { recursive: true, force: true })
   })
 

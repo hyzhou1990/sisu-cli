@@ -34,6 +34,11 @@ describe('pager model', () => {
     expect(state.entries.at(-1)?.text).toBe('Hello')
   })
 
+  it('lists /model as a switchable session command', () => {
+    expect(SLASH_COMMANDS.some((item) => item.name === '/model')).toBe(true)
+    expect(filterSlash('/m').some((item) => item.name === '/model')).toBe(true)
+  })
+
   it('lists /login as the in-session sign-in command', () => {
     const login = SLASH_COMMANDS.find((item) => item.name === '/login')
     expect(login?.hint).toMatch(/browser/i)
