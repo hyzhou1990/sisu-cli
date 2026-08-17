@@ -90,6 +90,27 @@ function windowAroundSelected(
   return lines.slice(windowStart, windowStart + budget)
 }
 
+function isIdleWelcome(state: PagerState): boolean {
+  return !state.conversationId && state.entries.length === 0
+}
+
+function welcomeLines(guest: boolean): string[] {
+  if (guest) {
+    return [
+      'SISU',
+      '',
+      'Sign in to start a conversation.',
+      '/login   open the browser',
+      '/help    commands',
+    ]
+  }
+  return [
+    'SISU',
+    '',
+    'Ask anything, or type /help.',
+  ]
+}
+
 function slashMenuLines(state: PagerState): string[] {
   if (!state.slashOpen) return []
   const items = filterSlash(state.draft)
@@ -125,7 +146,10 @@ export function renderPager(
 
   const slash = slashMenuLines(state)
   const slashTake = Math.min(slash.length, bodyBudget)
-  const scrollBudget = bodyBudget - slashTake
+  const guest = !(state.statusLine || '').trim() || (state.statusLine || '').includes('not signed in')
+  const welcome = isIdleWelcome(state) ? welcomeLines(guest).map((line) => (line ? `  ${line}` : '')) : []
+  const welcomeTake = Math.min(welcome.length, Math.max(0, bodyBudget - slashTake))
+  const scrollBudget = bodyBudget - slashTake - welcomeTake
 
   const laid = layoutScrollback(state, width)
   const lastEntry = Math.max(0, state.entries.length - 1)
@@ -138,8 +162,9 @@ export function renderPager(
   )
 
   const body: string[] = []
-  // Top-pad scrollback so newest content sits just above slash/status/prompt.
-  while (body.length + visibleScroll.length < scrollBudget) {
+  body.push(...welcome.slice(0, welcomeTake))
+  // Top-pad remaining scrollback so live status sits just above slash/prompt.
+  while (body.length + visibleScroll.length < welcomeTake + scrollBudget) {
     body.push('')
   }
   body.push(...visibleScroll)

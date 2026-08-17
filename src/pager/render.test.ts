@@ -1,6 +1,19 @@
 import { createPagerState, startAssistant, appendText, applyKey } from './model'
 import { renderPager } from './render'
 
+it('shows a signed-out welcome instead of an empty room', () => {
+  const state = createPagerState()
+  state.statusLine = 'sisu · not signed in'
+  const frame = renderPager(state, 40, 12)
+  const lines = frame.split('\n')
+  expect(lines).toHaveLength(12)
+  expect(lines.every((line) => line.length === 40)).toBe(true)
+  expect(frame).toContain('SISU')
+  expect(frame).toContain('Sign in to start')
+  expect(frame).toContain('/login')
+  expect(frame).toMatch(/›/)
+})
+
 it('fills a fixed grid with scrollback above and prompt below', () => {
   let state = startAssistant(createPagerState())
   state = appendText(state, 'hello from sisu')

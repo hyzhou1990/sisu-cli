@@ -146,7 +146,15 @@ export async function webLoginCommand(
 
   const started = await http(`${apiBase}/api/auth/cli/device`, { method: 'POST' })
   const startBody = await started.json().catch(() => ({}))
-  if (!started.ok) throw new Error(errorDetail(startBody, `device start failed (${started.status})`))
+  if (!started.ok) {
+    if (started.status === 404 || started.status === 405) {
+      throw new Error('Browser login is not on this server yet. Use: sisu login --email <email> --password <password>')
+    }
+    if (started.status === 503) {
+      throw new Error('Sign-in is temporarily unavailable. Try again in a moment.')
+    }
+    throw new Error(errorDetail(startBody, `device start failed (${started.status})`))
+  }
   const deviceCode = String(startBody.device_code || '')
   const userCode = String(startBody.user_code || '')
   const rawVerify = String(startBody.verification_uri_complete || startBody.verification_uri || '')

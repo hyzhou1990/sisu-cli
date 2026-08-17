@@ -50,12 +50,16 @@ export function formatChromeStatus(
   quota: string,
   conversationId: string,
 ): string {
-  const parts = [
-    (email || '').trim() || 'not logged in',
-    (quota || '').trim() || 'quota unavailable',
-    conversationId || 'new',
-    'client=tui',
-  ].filter((part) => part.length > 0)
+  const who = (email || '').trim()
+  if (!who) {
+    const conv = (conversationId || '').trim()
+    return conv && conv !== 'new' ? `sisu · not signed in · ${conv}` : 'sisu · not signed in'
+  }
+  const parts = [who]
+  const quotaText = (quota || '').trim()
+  if (quotaText && quotaText !== 'quota unavailable') parts.push(quotaText)
+  const conv = (conversationId || '').trim()
+  if (conv && conv !== 'new') parts.push(conv)
   return parts.join(' · ')
 }
 
@@ -129,9 +133,6 @@ export async function runPager(
     }
   }
   let state = withChrome(createPagerState())
-  if (!chromeEmail && options.login) {
-    state = pushEntry(state, 'status', 'Not logged in. Type /login to sign in with your browser.')
-  }
   let rest = ''
   let newConversation = false
   let pickMode = false

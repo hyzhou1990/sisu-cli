@@ -243,6 +243,22 @@ describe('sisu commands', () => {
     expect(() => openBrowserSafely('https://www.sisu.chat/api/auth/cli/verify', fake, 'linux')).not.toThrow()
   })
 
+  it('explains a 404 device start instead of dumping Not Found', async () => {
+    const home = makeHome()
+    process.env.SISU_HOME = home
+    const http = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({ detail: 'Not Found' }),
+      text: async () => '',
+    })
+    await expect(webLoginCommand({
+      apiBase: 'https://www.sisu.chat',
+      openBrowser: () => undefined,
+    }, http)).rejects.toThrow(/not on this server yet/i)
+    fs.rmSync(home, { recursive: true, force: true })
+  })
+
   it('cancels web login when the device poll is denied', async () => {
     const home = makeHome()
     process.env.SISU_HOME = home

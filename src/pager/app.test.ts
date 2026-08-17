@@ -163,7 +163,7 @@ it('keeps the pager up when quota fetch fails', async () => {
     quota: async () => { throw new Error('balance down') },
   })
   await started
-  expect(writes.join('')).toContain('quota unavailable')
+  expect(writes.join('')).toContain('ada@b.c')
   io.feed('/quit\r')
   await done
 })
@@ -182,18 +182,14 @@ it('paints first-frame chrome and updates it when the conversation id changes', 
   await started
   const first = writes.join('')
   expect(first).toContain('ada@b.c')
-  expect(first).toContain('quota unavailable')
   expect(first).not.toContain('billed to this account')
-  expect(first).toContain('client=tui')
-  expect(first).toMatch(/new/)
+  expect(first).not.toContain('client=tui')
   io.feed('/open conv-99\r')
   await flush()
   expect(writes.at(-1)).toContain('conv-99')
   expect(writes.at(-1)).toContain('ada@b.c')
-  expect(writes.at(-1)).toContain('client=tui')
   io.feed('/new\r')
   await flush()
-  expect(writes.at(-1)).toMatch(/new/)
   expect(writes.at(-1)).not.toContain('conv-99')
   io.feed('/quit\r')
   await done
@@ -602,7 +598,7 @@ it('chromeShortQuota keeps unlimited, first pts segment, or unavailable', () => 
   expect(chromeShortQuota('something else')).toBe('quota unavailable')
 })
 
-it('keeps client=tui visible on an 80-col frame when quota is a long formatQuota line', async () => {
+it('keeps email and short quota on an 80-col frame when quota is a long formatQuota line', async () => {
   const writes: string[] = []
   const io = fakeIo(writes)
   const longQuota = 'quota 12000 pts · Pro 8000 · wallet 3000 · bonus 1000 · allowance 200/8000'
@@ -616,7 +612,6 @@ it('keeps client=tui visible on an 80-col frame when quota is a long formatQuota
   const frame = writes.at(-1) || ''
   const status = frame.split('\n').find((line) => line.includes('ada@b.c')) || ''
   expect(status).toContain('quota 12000 pts')
-  expect(status).toContain('client=tui')
   expect(status).not.toContain('wallet 3000')
   expect(status).not.toContain('allowance 200/8000')
   io.feed('/quit\r')
@@ -640,8 +635,9 @@ it('enters logged out, blocks turns, and completes /login in the pager', async (
   })
   const { done, started } = readyPager(io, transport, { columns: 48, rows: 12, login })
   await started
-  expect(writes.at(-1)).toContain('Not logged in')
-  expect(writes.at(-1)).toContain('not logged in')
+  expect(writes.at(-1)).toContain('not signed in')
+  expect(writes.at(-1)).toContain('SISU')
+  expect(writes.at(-1)).toContain('/login')
   io.feed('hello\r')
   await flush()
   expect(sent).toEqual([])
