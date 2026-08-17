@@ -2,21 +2,12 @@ export { sisuMarkArt, sisuMarkLines } from './mark'
 export { sisuTreeArt, sisuTreeLines } from './tree'
 import { markRgb } from './mark'
 import { mobiusFrameHeight, mobiusFrameWidth, renderMobiusFrame } from './mobius'
-import { sisuTreeArt, sisuTreeLines } from './tree'
 
 const RESET = '\x1b[0m'
-const TERRACOTTA = '\x1b[38;2;184;90;58m'
 const INK = '\x1b[38;2;220;214;204m'
 const INK_DIM = '\x1b[38;2;140;132;120m'
 
 const HEADLINE = '思有所溯'
-const TAGLINE = '为科研而生的工作台——记录退到思考之后，不打扰任何一念。'
-const COLOPHON = [
-  '对话、文献与数据，落笔成档',
-  '每个结论，都能沿枝回到它的根',
-  '众人的知识彼此嫁接，长成一片林',
-]
-const NUMERALS = ['一', '二', '三']
 
 export function sisuMobiusArt(columns = 80, phase = 0, color = false): string {
   return renderMobiusFrame({
@@ -72,17 +63,6 @@ function lockup(color: boolean): string[] {
   return [`${inf}  ${name}`, `   ${latin}`]
 }
 
-function colophon(columns: number, color: boolean): string[] {
-  const lines: string[] = []
-  for (let i = 0; i < COLOPHON.length; i += 1) {
-    const num = paint(NUMERALS[i], TERRACOTTA, color)
-    const body = paint(COLOPHON[i], INK_DIM, color)
-    const line = `${num}  ${body}`
-    if (displayWidth(line) + 2 <= columns) lines.push(line)
-  }
-  return lines
-}
-
 function padLeft(text: string, n: number): string {
   return `${' '.repeat(Math.max(0, n))}${text}`
 }
@@ -93,70 +73,35 @@ function center(text: string, width: number): string {
   return padLeft(text, pad)
 }
 
-function copyColumn(columns: number, color: boolean, compact: boolean): string[] {
-  const indent = 2
-  const lines = [
-    ...lockup(color).map((line) => padLeft(line, indent)),
-    '',
-    padLeft(paint(HEADLINE, INK, color), indent),
-  ]
-  if (!compact && displayWidth(TAGLINE) + indent <= columns) {
-    lines.push(padLeft(paint(TAGLINE, INK_DIM, color), indent))
-  }
-  if (!compact) {
-    const notes = colophon(columns, color)
-    if (notes.length) {
-      lines.push('')
-      for (const note of notes) lines.push(padLeft(note, indent))
-    }
-  }
-  return lines
+function centerBlock(lines: string[], width: number): string[] {
+  return lines.map((line) => center(line, width))
 }
 
-function treeColumn(columns: number, color: boolean, phase: number, grow: number): string[] {
-  const raw = sisuTreeLines(columns, phase, grow)
-  const painted = sisuTreeArt(columns, color, phase, grow).split('\n')
-  const treeWidth = raw.reduce((max, line) => Math.max(max, line.length), 0)
-  const pad = Math.max(0, Math.floor((columns - treeWidth) / 2))
-  return painted.map((line, i) => {
-    const vis = raw[i]?.length ?? displayWidth(line)
-    return padLeft(`${line}${' '.repeat(Math.max(0, treeWidth - vis))}`, pad)
-  })
-}
-
-const STILL_PHASE = 2.05
+const STILL_PHASE = 0.85
 
 /**
- * Login-page splash. `phase` orbits the camera; `grow` is 0..1 paint progress.
+ * Möbius splash. `phase` slides the half-twist around the single face.
  * Line count is stable for a given width so the intro can rewrite in place.
  */
-export function sisuSplashFrame(columns = 80, color = true, phase = STILL_PHASE, grow = 1): string {
+export function sisuSplashFrame(columns = 80, color = true, phase = STILL_PHASE, _grow = 1): string {
   const width = Math.max(20, Math.floor(columns))
-  const compact = width < 52
-  const copy = copyColumn(width, color, compact)
-  if (width >= 72) {
-    const gap = 3
-    const leftBudget = Math.min(44, Math.floor(width * 0.42))
-    const leftCopy = copyColumn(leftBudget, color, true)
-    const leftW = Math.max(...leftCopy.map((line) => displayWidth(line)), 22)
-    const rightW = Math.max(28, width - leftW - gap)
-    const right = treeColumn(rightW, color, phase, grow)
-    const rows = Math.max(leftCopy.length, right.length)
-    const merged: string[] = []
-    for (let i = 0; i < rows; i += 1) {
-      const left = leftCopy[i] ?? ''
-      const pad = Math.max(0, leftW + gap - displayWidth(left))
-      merged.push(`${left}${' '.repeat(pad)}${right[i] ?? ''}`)
-    }
-    const notes = colophon(width, color)
-    if (notes.length) {
-      merged.push('')
-      for (const note of notes) merged.push(padLeft(note, 2))
-    }
-    return merged.join('\n')
-  }
-  const tree = treeColumn(width, color, phase, grow)
-  return [...copy, '', ...tree].join('\n')
+  const ringW = mobiusFrameWidth(width)
+  const ring = renderMobiusFrame({
+    cols: ringW,
+    rows: mobiusFrameHeight(width),
+    phase,
+    color,
+  }).split('\n')
+  const pad = Math.max(0, Math.floor((width - ringW) / 2))
+  const art = ring.map((line) => padLeft(line, pad))
+  const caption = centerBlock(
+    [
+      `${infinityMark(color)}  ${paint('思溯', INK, color)}   ${paint('SiSu', INK_DIM, color)}`,
+      paint(HEADLINE, INK, color),
+    ],
+    width,
+  )
+  return [...art, '', ...caption].join('\n')
 }
 
 export function sisuSplashHeight(columns = 80): number {

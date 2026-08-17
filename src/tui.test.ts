@@ -107,7 +107,7 @@ describe('sisu tui', () => {
     expect(written.join('')).toContain('opened conv-99')
   })
 
-  it('animates the 溯源之树 growing and orbiting', async () => {
+  it('animates the ∞ Möbius so the half-twist travels', async () => {
     const { io, written } = scriptedIo([])
     await playTreeIntro(io, {
       columns: 72,

@@ -1,6 +1,6 @@
 {
   "name": "@stevezhou/sisu",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "SiSu CLI — one login, cloud quota, local workspace",
   "license": "UNLICENSED",
   "homepage": "https://www.sisu.chat",

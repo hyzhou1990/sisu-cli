@@ -71,11 +71,7 @@ export async function playMobiusIntro(
   io.write(`\n${sisuWordmark()}\n\n`)
 }
 
-function easeOutCubic(t: number): number {
-  return 1 - (1 - t) ** 3
-}
-
-/** Grow the 溯源之树, then orbit so lighting and occlusion read as volume. */
+/** Slide the half-twist around the ∞ so the single face loops. */
 export async function playTreeIntro(
   io: LineIo,
   options: {
@@ -93,9 +89,8 @@ export async function playTreeIntro(
   io.write('\x1b[?25l')
   for (let i = 0; i < frames; i += 1) {
     const u = i / (frames - 1)
-    const grow = easeOutCubic(Math.min(1, u / 0.58))
-    const phase = 0.12 + u * 2.35
-    const art = sisuSplashFrame(columns, color, phase, grow)
+    const phase = u * Math.PI * 2
+    const art = sisuSplashFrame(columns, color, phase)
     if (i === 0) io.write(`${art}\n`)
     else io.write(`\x1b[${rows}A${art}\n`)
     await sleep(42)

@@ -1,4 +1,5 @@
-import { displayWidth, sisuTreeArt, sisuTreeLines, sisuWelcomeCopy } from '../logo'
+import { displayWidth, sisuMobiusArt, sisuWelcomeCopy } from '../logo'
+import { mobiusFrameHeight, mobiusFrameWidth } from '../mobius'
 import { filterSlash, type PagerEntry, type PagerState } from './model'
 import { getTheme, padVisible, stripAnsi, type PagerTheme, type ThemeName } from './theme'
 
@@ -108,16 +109,12 @@ function center(text: string, width: number, vis = displayWidth(text)): string {
 
 function welcomeLines(guest: boolean, width: number, height: number, _theme: PagerTheme): string[] {
   const copy = sisuWelcomeCopy(guest, true).map((line) => center(line, width))
-  const treeCols = height >= 18 && width >= 48 ? Math.min(width, 72) : width >= 36 ? 44 : 28
-  const raw = sisuTreeLines(treeCols)
-  const painted = sisuTreeArt(treeCols, true).split('\n')
-  const treeWidth = raw.reduce((max, line) => Math.max(max, line.length), 0)
-  const treePad = Math.max(0, Math.floor((width - treeWidth) / 2))
-  const tree = painted.map((line, i) => {
-    const vis = raw[i]?.length ?? displayWidth(line)
-    return `${' '.repeat(treePad)}${line}${' '.repeat(Math.max(0, treeWidth - vis))}`
-  })
-  return [...copy, '', ...tree]
+  const ringW = height >= 16 && width >= 48 ? mobiusFrameWidth(Math.min(width, 72)) : Math.min(width, 44)
+  const ringH = Math.min(mobiusFrameHeight(ringW), Math.max(8, height - 7))
+  const painted = sisuMobiusArt(ringW, 0.85, true).split('\n').slice(0, ringH)
+  const pad = Math.max(0, Math.floor((width - ringW) / 2))
+  const ring = painted.map((line) => `${' '.repeat(pad)}${line}`)
+  return [...copy, '', ...ring]
 }
 
 function slashMenuLines(state: PagerState, theme: PagerTheme): string[] {
