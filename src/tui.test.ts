@@ -30,7 +30,6 @@ describe('sisu tui', () => {
       color: false,
     })
     expect(code).toBe(0)
-    expect(written.join('')).toMatch(/思溯|思有所溯/)
     expect(written.join('')).not.toMatch(/Email:/)
     expect(pager).toHaveBeenCalledWith(
       expect.anything(),

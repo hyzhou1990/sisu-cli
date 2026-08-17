@@ -1,4 +1,4 @@
-import { displayWidth, sisuMobiusArt, sisuWelcomeCopy } from '../logo'
+import { displayWidth, SISU_STILL_PHASE, sisuMobiusArt, sisuWelcomeCopy } from '../logo'
 import { mobiusFrameHeight, mobiusFrameWidth } from '../mobius'
 import { filterSlash, type PagerEntry, type PagerState } from './model'
 import { getTheme, padVisible, stripAnsi, type PagerTheme, type ThemeName } from './theme'
@@ -107,13 +107,21 @@ function center(text: string, width: number, vis = displayWidth(text)): string {
   return `${' '.repeat(padLeft)}${text}`
 }
 
-function welcomeLines(guest: boolean, width: number, height: number, _theme: PagerTheme): string[] {
+function welcomeLines(
+  guest: boolean,
+  width: number,
+  bodyBudget: number,
+  phase: number,
+): string[] {
   const copy = sisuWelcomeCopy(guest, true).map((line) => center(line, width))
-  const ringW = height >= 16 && width >= 48 ? mobiusFrameWidth(Math.min(width, 72)) : Math.min(width, 44)
-  const ringH = Math.min(mobiusFrameHeight(ringW), Math.max(8, height - 7))
-  const painted = sisuMobiusArt(ringW, 0.85, true).split('\n').slice(0, ringH)
+  const ringRoom = Math.max(0, bodyBudget - copy.length - 1)
+  if (ringRoom < 4 || width < 28) return copy
+  const ringW = mobiusFrameWidth(width >= 48 ? Math.min(width, 72) : Math.min(width, 44))
+  const ringH = Math.min(mobiusFrameHeight(ringW), ringRoom)
+  const painted = sisuMobiusArt(ringW, phase, true).split('\n').slice(0, ringH)
   const pad = Math.max(0, Math.floor((width - ringW) / 2))
   const ring = painted.map((line) => `${' '.repeat(pad)}${line}`)
+  if (bodyBudget >= 16) return [...ring, '', ...copy]
   return [...copy, '', ...ring]
 }
 
@@ -137,6 +145,7 @@ export function renderPager(
   cols: number,
   rows: number,
   themeName: ThemeName = 'dark',
+  view: { phase?: number } = {},
 ): string {
   const theme = getTheme(themeName)
   const height = Math.max(0, rows)
@@ -151,7 +160,9 @@ export function renderPager(
   const slash = slashMenuLines(state, theme)
   const slashTake = Math.min(slash.length, bodyBudget)
   const guest = !(state.statusLine || '').trim() || (state.statusLine || '').includes('not signed in')
-  const welcome = isIdleWelcome(state) ? welcomeLines(guest, width, height, theme) : []
+  const welcome = isIdleWelcome(state)
+    ? welcomeLines(guest, width, bodyBudget, view.phase ?? SISU_STILL_PHASE)
+    : []
   const welcomeTake = Math.min(welcome.length, Math.max(0, bodyBudget - slashTake))
   const scrollBudget = bodyBudget - slashTake - welcomeTake
 

@@ -59,6 +59,9 @@ function readyPager(
     email?: string
     quota?: () => Promise<string> | string
     login?: (notify: (line: string) => void) => Promise<string>
+    intro?: boolean
+    introFrames?: number
+    sleep?: (ms: number) => Promise<void>
   } = {},
 ) {
   let signal!: () => void
@@ -614,6 +617,26 @@ it('keeps email and short quota on an 80-col frame when quota is a long formatQu
   expect(status).toContain('quota 12000 pts')
   expect(status).not.toContain('wallet 3000')
   expect(status).not.toContain('allowance 200/8000')
+  io.feed('/quit\r')
+  await done
+})
+
+it('plays the Möbius intro inside the pager so the prompt does not jump in', async () => {
+  const writes: string[] = []
+  const io = fakeIo(writes)
+  const { done, started } = readyPager(io, stubTransport(), {
+    columns: 72,
+    rows: 24,
+    intro: true,
+    introFrames: 5,
+    sleep: async () => undefined,
+  })
+  await started
+  const homes = writes.filter((item) => item.includes('\x1b[H')).length
+  expect(homes).toBeGreaterThanOrEqual(5)
+  expect(writes[0]).toContain('\x1b[?1049h')
+  expect(writes.at(-1)).toContain('›')
+  expect(writes.at(-1)).toMatch(/思溯|思有所溯/)
   io.feed('/quit\r')
   await done
 })

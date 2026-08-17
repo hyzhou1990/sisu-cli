@@ -77,7 +77,8 @@ function centerBlock(lines: string[], width: number): string[] {
   return lines.map((line) => center(line, width))
 }
 
-const STILL_PHASE = 0.85
+export const SISU_STILL_PHASE = 0.85
+const STILL_PHASE = SISU_STILL_PHASE
 
 /**
  * Möbius splash. `phase` slides the half-twist around the single face.

@@ -15,12 +15,12 @@ import {
   type PagerState,
 } from './model'
 import { entriesFromMessages } from './history'
+import { SISU_STILL_PHASE } from '../logo'
 import { renderPager } from './render'
 import type { ThemeName } from './theme'
 
 const ALT_ENTER = '\x1b[?1049h\x1b[?25l'
 const ALT_LEAVE = '\x1b[?1049l\x1b[?25h'
-const CLEAR_HOME = '\x1b[2J\x1b[H'
 
 export interface PagerIo {
   write(text: string): void
@@ -43,6 +43,10 @@ export interface RunPagerOptions {
   ls?: () => Promise<string> | string
   training?: (on: boolean) => Promise<string> | string
   login?: (notify: (line: string) => void) => Promise<string>
+  /** Play the Möbius twist in the pager grid before taking input. */
+  intro?: boolean
+  sleep?: (ms: number) => Promise<void>
+  introFrames?: number
 }
 
 export function formatChromeStatus(
@@ -142,9 +146,20 @@ export async function runPager(
   const pending: PagerKey[] = []
   let unsubscribe: () => void = () => undefined
 
-  const paint = () => {
+  const paint = (phase = SISU_STILL_PHASE) => {
     if (!running) return
-    io.write(`${CLEAR_HOME}${renderPager(state, cols, rows, theme)}`)
+    io.write(`\x1b[H${renderPager(state, cols, rows, theme, { phase })}`)
+  }
+
+  const playIntro = async () => {
+    const frames = Math.max(2, options.introFrames ?? 32)
+    const sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)))
+    for (let i = 0; i < frames; i += 1) {
+      if (!running) return
+      const u = i / (frames - 1)
+      paint(SISU_STILL_PHASE + u * Math.PI * 2)
+      await sleep(38)
+    }
   }
 
   let removeTerm: () => void = () => undefined
@@ -163,6 +178,7 @@ export async function runPager(
   try {
     io.enterRaw()
     io.write(ALT_ENTER)
+    if (options.intro) await playIntro()
     const onTerm = () => finish(0)
     process.on('SIGTERM', onTerm)
     removeTerm = () => {

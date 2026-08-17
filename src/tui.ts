@@ -229,16 +229,19 @@ export async function runTui(
   const animate = deps.animate ?? shouldAnimateSplash()
 
   try {
-  if (animate) {
-    await playTreeIntro(io, {
-      columns,
-      color: deps.color ?? true,
-      sleep: deps.sleep,
-    })
-  } else {
-    io.write(`${sisuSplash(columns, true)}\n`)
-  }
   const account = auth()
+  const usePager = Boolean(deps.pager || shouldUsePager(deps))
+  if (!usePager) {
+    if (animate) {
+      await playTreeIntro(io, {
+        columns,
+        color: deps.color ?? true,
+        sleep: deps.sleep,
+      })
+    } else {
+      io.write(`${sisuSplash(columns, true)}\n`)
+    }
+  }
 
   const startWebLogin = async (notify: (line: string) => void): Promise<string> => {
     return webLogin({
@@ -249,13 +252,15 @@ export async function runTui(
     }, http)
   }
 
-  if (deps.pager || shouldUsePager(deps)) {
+  if (usePager) {
     io.close?.()
     const transport = createFastApiTransport(http)
     return await (deps.pager ?? runPager)(stdioPagerIo(), transport, {
       columns,
       email: account?.email,
       login: startWebLogin,
+      intro: animate,
+      sleep: deps.sleep,
       quota: async () => formatQuota(await fetchBalance(http)),
       status: () => status(http),
       ls: () => {
