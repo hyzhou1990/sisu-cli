@@ -1,7 +1,7 @@
 {
   "name": "@stevezhou/sisu",
-  "version": "0.2.0",
-  "description": "SiSu CLI — local grok-build runtime, SiSu cloud models",
+  "version": "0.2.1",
+  "description": "SiSu CLI — Grok Build TUI + SiSu login, models, and quota",
   "license": "UNLICENSED",
   "homepage": "https://www.sisu.chat",
   "bugs": {
@@ -23,7 +23,9 @@
   "files": [
     "dist",
     "README.md",
-    "NOTICE"
+    "NOTICE",
+    "scripts/postinstall.js",
+    "scripts/install-pager.js"
   ],
   "publishConfig": {
     "access": "public"
@@ -32,6 +34,7 @@
     "build": "tsc",
     "prepack": "tsc",
     "prepublishOnly": "npm test",
+    "postinstall": "node scripts/postinstall.js",
     "test": "jest --runInBand",
     "typecheck": "tsc --noEmit"
   },

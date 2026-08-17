@@ -37,6 +37,8 @@ it('npm pack ships the executable and omits tests and sources', () => {
     expect(listing).toMatch(/package\/dist\/main\.js/)
     expect(listing).toMatch(/package\/package\.json/)
     expect(listing).toMatch(/package\/README\.md/)
+    expect(listing).toMatch(/package\/scripts\/postinstall\.js/)
+    expect(listing).toMatch(/package\/scripts\/install-pager\.js/)
     expect(listing).not.toMatch(/commands\.test/)
     expect(listing).not.toMatch(/package\/src\//)
     expect(listing).not.toMatch(/node_modules/)

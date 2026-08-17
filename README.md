@@ -10,7 +10,10 @@ One login. Cloud quota. Local runtime. Auth lives in `~/.sisu`, shared with SiSu
 npm install -g @stevezhou/sisu
 sisu --help
 sisu login
+sisu
 ```
+
+`npm install -g` is the same shape as `@xai-official/grok`: a small JS package. On macOS Apple Silicon the postinstall pulls the prebuilt Grok Build TUI into `~/.sisu/bin`. Other platforms keep the Node TUI until those binaries are published.
 
 Requires Node.js 20 or newer. `npx sisu` works without a global install.
 

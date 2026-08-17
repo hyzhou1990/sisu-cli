@@ -4,3 +4,4 @@ dist/
 .DS_Store
 vendor/grok-build/
 bin/xai-grok-pager
+bin/*.br

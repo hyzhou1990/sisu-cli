@@ -9,8 +9,10 @@ export function grokBuildBinaryCandidates(): string[] {
   const env = (process.env.SISU_GROK_BIN || '').trim()
   const root = grokBuildRoot()
   const packaged = path.resolve(__dirname, '..', 'bin', 'xai-grok-pager')
+  const npmInstalled = path.join(getSisuHome(), 'bin', process.platform === 'win32' ? 'xai-grok-pager.exe' : 'xai-grok-pager')
   return [
     env,
+    npmInstalled,
     packaged,
     path.join(root, 'target', 'release', 'xai-grok-pager'),
     path.join(root, 'target', 'debug', 'xai-grok-pager'),
