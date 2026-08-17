@@ -39,5 +39,5 @@ jobs:
           tarball="$(npm pack --json | node -e "const fs=require('fs'); const rows=JSON.parse(fs.readFileSync(0,'utf8')); process.stdout.write(rows[0].filename)")"
           prefix="$(mktemp -d)"
           npm install -g --prefix "$prefix" "./$tarball"
-          "$prefix/bin/sisu" --help | grep -q 'npm install -g sisu'
+          "$prefix/bin/sisu" --help | grep -q 'npm install -g @stevezhou/sisu'
           "$prefix/bin/sisu" --help | grep -q 'sisu login'

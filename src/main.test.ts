@@ -6,7 +6,7 @@ import path from 'path'
 
 it('names the web login path plus email/password/token in help', () => {
   const text = helpText()
-  expect(text).toMatch(/npm install -g sisu/)
+  expect(text).toMatch(/npm install -g @stevezhou\/sisu/)
   expect(text).toMatch(/browser/i)
   expect(text).toMatch(/--code/)
   expect(text).toMatch(/--email/)

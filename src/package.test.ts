@@ -15,7 +15,7 @@ const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
 }
 
 it('is a public sisu package with a sisu bin', () => {
-  expect(pkg.name).toBe('sisu')
+  expect(pkg.name).toBe('@stevezhou/sisu')
   expect(pkg.private).toBeUndefined()
   expect(pkg.bin?.sisu).toBe('dist/main.js')
   expect(pkg.files).toEqual(expect.arrayContaining(['dist']))

@@ -1,5 +1,5 @@
 {
-  "name": "sisu",
+  "name": "@stevezhou/sisu",
   "version": "0.1.0",
   "description": "SiSu CLI — one login, cloud quota, local workspace",
   "license": "UNLICENSED",

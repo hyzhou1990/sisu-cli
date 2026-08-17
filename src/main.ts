@@ -21,7 +21,7 @@ export function helpText(): string {
 One login. Cloud quota. Local workspace.
 
 Install:
-  npm install -g sisu
+  npm install -g @stevezhou/sisu
 
 Usage:
   sisu login                  open a browser (or print a URL) to sign in

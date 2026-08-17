@@ -2,12 +2,12 @@
 
 Official publish channel for the SiSu CLI npm package.
 
-One login. Cloud quota. Local workspace. Auth lives in `~/.sisu`, shared with SiSu Desktop. Product development of the CLI still happens in the main SiSu repo; this repository is what `npm publish` and `npm install -g sisu` use.
+One login. Cloud quota. Local workspace. Auth lives in `~/.sisu`, shared with SiSu Desktop. Product development of the CLI still happens in the main SiSu repo; this repository is what `npm publish` and `npm install -g @stevezhou/sisu` use.
 
 ## Install
 
 ```bash
-npm install -g sisu
+npm install -g @stevezhou/sisu
 sisu --help
 sisu login
 ```
