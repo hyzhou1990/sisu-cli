@@ -381,7 +381,7 @@ describe('sisu commands', () => {
     expect(http.mock.calls[1][0]).toBe('https://www.sisu.chat/api/chat/send')
     expect(JSON.parse(String(http.mock.calls[0][1]?.body))).toMatchObject({
       client: 'cli',
-      client_version: '0.1.0',
+      client_version: require('../package.json').version,
     })
     expect(JSON.parse(String(http.mock.calls[1][1]?.body))).toMatchObject({
       conversation_id: 'conv-1',
