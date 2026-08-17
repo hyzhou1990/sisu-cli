@@ -36,7 +36,7 @@ Usage:
   sisu history
   sisu thread <conversation-id>
   sisu training --on|--off
-  sisu                 interactive TUI (welcome tree)
+  sisu                 interactive TUI (3D welcome tree)
   sisu help
 
 Auth and workspaces live in $SISU_HOME (default ~/.sisu), shared with Desktop.

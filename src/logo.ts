@@ -113,9 +113,9 @@ function copyColumn(columns: number, color: boolean, compact: boolean): string[]
   return lines
 }
 
-function treeColumn(columns: number, color: boolean): string[] {
-  const raw = sisuTreeLines(columns)
-  const painted = sisuTreeArt(columns, color).split('\n')
+function treeColumn(columns: number, color: boolean, phase: number, grow: number): string[] {
+  const raw = sisuTreeLines(columns, phase, grow)
+  const painted = sisuTreeArt(columns, color, phase, grow).split('\n')
   const treeWidth = raw.reduce((max, line) => Math.max(max, line.length), 0)
   const pad = Math.max(0, Math.floor((columns - treeWidth) / 2))
   return painted.map((line, i) => {
@@ -124,31 +124,47 @@ function treeColumn(columns: number, color: boolean): string[] {
   })
 }
 
+const STILL_PHASE = 2.05
+
 /**
- * Login-page splash: lockup + 思有所溯 + 题跋 over the 溯源之树.
- * Side-by-side on a wide terminal; stacked when the sheet is narrow.
+ * Login-page splash. `phase` orbits the camera; `grow` is 0..1 paint progress.
+ * Line count is stable for a given width so the intro can rewrite in place.
  */
-export function sisuSplash(columns = 80, color = true): string {
+export function sisuSplashFrame(columns = 80, color = true, phase = STILL_PHASE, grow = 1): string {
   const width = Math.max(20, Math.floor(columns))
   const compact = width < 52
   const copy = copyColumn(width, color, compact)
-  const tree = treeColumn(width, color)
-  if (width >= 100) {
+  if (width >= 72) {
     const gap = 3
-    const leftW = Math.max(...copy.map((line) => displayWidth(line)))
-    const rightW = width - leftW - gap
-    const right = treeColumn(rightW, color)
-    const rows = Math.max(copy.length, right.length)
-    const merged: string[] = ['']
+    const leftBudget = Math.min(44, Math.floor(width * 0.42))
+    const leftCopy = copyColumn(leftBudget, color, true)
+    const leftW = Math.max(...leftCopy.map((line) => displayWidth(line)), 22)
+    const rightW = Math.max(28, width - leftW - gap)
+    const right = treeColumn(rightW, color, phase, grow)
+    const rows = Math.max(leftCopy.length, right.length)
+    const merged: string[] = []
     for (let i = 0; i < rows; i += 1) {
-      const left = copy[i] ?? ''
+      const left = leftCopy[i] ?? ''
       const pad = Math.max(0, leftW + gap - displayWidth(left))
       merged.push(`${left}${' '.repeat(pad)}${right[i] ?? ''}`)
     }
-    merged.push('')
+    const notes = colophon(width, color)
+    if (notes.length) {
+      merged.push('')
+      for (const note of notes) merged.push(padLeft(note, 2))
+    }
     return merged.join('\n')
   }
-  return ['', ...copy, '', ...tree, ''].join('\n')
+  const tree = treeColumn(width, color, phase, grow)
+  return [...copy, '', ...tree].join('\n')
+}
+
+export function sisuSplashHeight(columns = 80): number {
+  return sisuSplashFrame(columns, false).split('\n').length
+}
+
+export function sisuSplash(columns = 80, color = true): string {
+  return sisuSplashFrame(columns, color, STILL_PHASE, 1)
 }
 
 export function sisuWelcomeCopy(guest: boolean, color = true): string[] {
@@ -165,8 +181,8 @@ export function sisuWelcomeCopy(guest: boolean, color = true): string[] {
   return lines
 }
 
-export function sisuBanner(columns = 80, _phase = 0, color = false): string {
-  return sisuSplash(columns, color)
+export function sisuBanner(columns = 80, phase = STILL_PHASE, color = false): string {
+  return sisuSplashFrame(columns, color, phase, 1)
 }
 
 export function stripAnsi(text: string): string {

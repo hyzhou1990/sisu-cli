@@ -1,7 +1,7 @@
 import readline from 'readline'
 import { execCommand, fetchBalance, formatQuota, listConversationsCommand, listLocalCommand, loginCommand, openConversationCommand, setTrainingCommand, statusCommand, webLoginCommand, type LoginInput, type WebLoginStart } from './commands'
 import { defaultHttp, HttpClient } from './http'
-import { sisuMobiusArt, sisuSplash, sisuWordmark } from './logo'
+import { sisuMobiusArt, sisuSplash, sisuSplashFrame, sisuSplashHeight, sisuWordmark } from './logo'
 import { mobiusFrameHeight } from './mobius'
 import { runPager, type PagerIo, type RunPagerOptions } from './pager/app'
 import { stdioPagerIo } from './pager/stdio'
@@ -69,6 +69,38 @@ export async function playMobiusIntro(
   }
   io.write('\x1b[?25h')
   io.write(`\n${sisuWordmark()}\n\n`)
+}
+
+function easeOutCubic(t: number): number {
+  return 1 - (1 - t) ** 3
+}
+
+/** Grow the 溯源之树, then orbit so lighting and occlusion read as volume. */
+export async function playTreeIntro(
+  io: LineIo,
+  options: {
+    columns?: number
+    frames?: number
+    sleep?: (ms: number) => Promise<void>
+    color?: boolean
+  } = {},
+): Promise<void> {
+  const columns = options.columns ?? process.stdout.columns ?? 80
+  const frames = Math.max(2, options.frames ?? 36)
+  const sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)))
+  const color = options.color ?? Boolean(process.stdout.isTTY)
+  const rows = sisuSplashHeight(columns)
+  io.write('\x1b[?25l')
+  for (let i = 0; i < frames; i += 1) {
+    const u = i / (frames - 1)
+    const grow = easeOutCubic(Math.min(1, u / 0.58))
+    const phase = 0.12 + u * 2.35
+    const art = sisuSplashFrame(columns, color, phase, grow)
+    if (i === 0) io.write(`${art}\n`)
+    else io.write(`\x1b[${rows}A${art}\n`)
+    await sleep(42)
+  }
+  io.write('\x1b[?25h')
 }
 
 export function defaultTuiIo(): LineIo {
@@ -202,9 +234,14 @@ export async function runTui(
   const animate = deps.animate ?? shouldAnimateSplash()
 
   try {
-  io.write(`${sisuSplash(columns, true)}\n`)
   if (animate) {
-    await (deps.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms))))(80)
+    await playTreeIntro(io, {
+      columns,
+      color: deps.color ?? true,
+      sleep: deps.sleep,
+    })
+  } else {
+    io.write(`${sisuSplash(columns, true)}\n`)
   }
   const account = auth()
 

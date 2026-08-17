@@ -1,4 +1,4 @@
-import { playMobiusIntro, runTui, shouldAnimateSplash, tuiHelp } from './tui'
+import { playMobiusIntro, playTreeIntro, runTui, shouldAnimateSplash, tuiHelp } from './tui'
 
 function scriptedIo(answers: string[]) {
   const written: string[] = []
@@ -30,7 +30,7 @@ describe('sisu tui', () => {
       color: false,
     })
     expect(code).toBe(0)
-    expect(written.join('')).toMatch(/思溯|思有所溯|│|╱|•/)
+    expect(written.join('')).toMatch(/思溯|思有所溯/)
     expect(written.join('')).not.toMatch(/Email:/)
     expect(pager).toHaveBeenCalledWith(
       expect.anything(),
@@ -105,6 +105,22 @@ describe('sisu tui', () => {
     expect(history).toHaveBeenCalled()
     expect(openThread).toHaveBeenCalledWith('conv-99')
     expect(written.join('')).toContain('opened conv-99')
+  })
+
+  it('animates the 溯源之树 growing and orbiting', async () => {
+    const { io, written } = scriptedIo([])
+    await playTreeIntro(io, {
+      columns: 72,
+      frames: 6,
+      color: false,
+      sleep: async () => undefined,
+    })
+    const out = written.join('')
+    expect(out).toContain('\x1b[?25l')
+    expect((out.match(/\x1b\[\d+A/g) || []).length).toBe(5)
+    expect(out).toMatch(/思溯/)
+    expect(out).toMatch(/思有所溯/)
+    expect(out).not.toMatch(/NaN/)
   })
 
   it('animates a rotating Möbius ring before the prompt', async () => {
