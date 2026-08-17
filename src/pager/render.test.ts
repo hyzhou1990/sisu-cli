@@ -1,5 +1,6 @@
 import { createPagerState, startAssistant, appendText, applyKey } from './model'
 import { renderPager, stripAnsi } from './render'
+import { visibleWidth } from './theme'
 
 function visLines(frame: string): string[] {
   return frame.split('\n').map((line) => stripAnsi(line))
@@ -11,12 +12,27 @@ it('shows a signed-out welcome instead of an empty room', () => {
   const frame = renderPager(state, 40, 12)
   const lines = visLines(frame)
   expect(lines).toHaveLength(12)
-  expect(lines.every((line) => line.length === 40)).toBe(true)
+  expect(lines.every((line) => visibleWidth(line) === 40)).toBe(true)
   expect(frame).toMatch(/[@%#*+=.•-]|思溯/)
   expect(frame).toContain('Sign in to start')
   expect(frame).toContain('/login')
+  expect((frame.match(/思有所溯/g) || []).length).toBe(1)
+  expect((frame.match(/\/login  browser/g) || []).length).toBe(1)
   expect(frame).toMatch(/›/)
   expect(frame).toContain('\x1b[38;2;')
+})
+
+it('vertically centers the welcome so the ring is not glued to the top', () => {
+  const state = createPagerState()
+  state.statusLine = 'sisu · not signed in'
+  const frame = renderPager(state, 80, 36)
+  const lines = visLines(frame)
+  expect(lines).toHaveLength(36)
+  expect(lines.every((line) => visibleWidth(line) === 80)).toBe(true)
+  const firstInk = lines.findIndex((line) => /[@%#*+=-]/.test(line))
+  expect(firstInk).toBeGreaterThan(2)
+  expect((frame.match(/思有所溯/g) || []).length).toBe(1)
+  expect((frame.match(/\/login  browser/g) || []).length).toBe(1)
 })
 
 it('paints user and assistant roles differently', () => {
@@ -51,7 +67,7 @@ it('fills a fixed grid with scrollback above and prompt below', () => {
   const frame = renderPager(state, 40, 8)
   const lines = visLines(frame)
   expect(lines).toHaveLength(8)
-  expect(lines.every((line) => line.length === 40)).toBe(true)
+  expect(lines.every((line) => visibleWidth(line) === 40)).toBe(true)
   expect(lines[6] + lines[7]).toMatch(/›/)
   expect(stripAnsi(frame)).toContain('hello from sisu')
   expect(stripAnsi(frame)).toContain('quota 12')
@@ -73,7 +89,7 @@ it('wraps long scrollback lines instead of dropping the tail', () => {
   const frame = renderPager(state, 16, 10)
   const lines = visLines(frame)
   expect(lines).toHaveLength(10)
-  expect(lines.every((line) => line.length === 16)).toBe(true)
+  expect(lines.every((line) => visibleWidth(line) === 16)).toBe(true)
   const painted = lines.map((line) => line.trimEnd()).join('')
   for (const ch of body) {
     expect(painted).toContain(ch)

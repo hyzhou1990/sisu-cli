@@ -148,7 +148,7 @@ export async function runPager(
 
   const paint = (phase = SISU_STILL_PHASE) => {
     if (!running) return
-    io.write(`\x1b[H${renderPager(state, cols, rows, theme, { phase })}`)
+    io.write(`\x1b[H${renderPager(state, cols, rows, theme, { phase })}\x1b[J`)
   }
 
   const playIntro = async () => {

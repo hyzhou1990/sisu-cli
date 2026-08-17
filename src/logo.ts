@@ -2,6 +2,7 @@ export { sisuMarkArt, sisuMarkLines } from './mark'
 export { sisuTreeArt, sisuTreeLines } from './tree'
 import { markRgb } from './mark'
 import { mobiusFrameHeight, mobiusFrameWidth, renderMobiusFrame } from './mobius'
+import { visibleWidth } from './pager/theme'
 
 const RESET = '\x1b[0m'
 const INK = '\x1b[38;2;220;214;204m'
@@ -22,27 +23,8 @@ export function sisuWordmark(): string {
   return ['思溯', 'SISU'].join('\n')
 }
 
-/** Terminal cells, not JS string length — CJK and ∞ must sit on the grid. */
 export function displayWidth(text: string): number {
-  let width = 0
-  for (const ch of stripAnsi(text)) {
-    const code = ch.codePointAt(0) ?? 0
-    width += isWide(code) ? 2 : 1
-  }
-  return width
-}
-
-function isWide(code: number): boolean {
-  return (
-    (code >= 0x1100 && code <= 0x115f) ||
-    (code >= 0x2e80 && code <= 0xa4cf && code !== 0x303f) ||
-    (code >= 0xac00 && code <= 0xd7a3) ||
-    (code >= 0xf900 && code <= 0xfaff) ||
-    (code >= 0xfe10 && code <= 0xfe19) ||
-    (code >= 0xfe30 && code <= 0xfe6f) ||
-    (code >= 0xff00 && code <= 0xff60) ||
-    (code >= 0xffe0 && code <= 0xffe6)
-  )
+  return visibleWidth(text)
 }
 
 function paint(text: string, prefix: string, color: boolean): string {
@@ -60,7 +42,7 @@ function lockup(color: boolean): string[] {
   const inf = infinityMark(color)
   const name = paint('思溯', INK, color)
   const latin = paint('SiSu', INK_DIM, color)
-  return [`${inf}  ${name}`, `   ${latin}`]
+  return [`${inf}  ${name}`, latin]
 }
 
 function padLeft(text: string, n: number): string {

@@ -176,13 +176,17 @@ export function renderPager(
     lastEntry,
   )
 
-  const body: string[] = []
-  body.push(...welcome.slice(0, welcomeTake))
-  while (body.length + visibleScroll.length < welcomeTake + scrollBudget) {
-    body.push('')
-  }
-  body.push(...visibleScroll)
-  body.push(...slash.slice(0, slashTake))
+  const shownWelcome = welcome.slice(0, welcomeTake)
+  const extra = Math.max(0, welcomeTake + scrollBudget - shownWelcome.length - visibleScroll.length)
+  const padTop = isIdleWelcome(state) && visibleScroll.length === 0 ? Math.floor(extra / 2) : 0
+  const padBot = extra - padTop
+  const body: string[] = [
+    ...Array.from({ length: padTop }, () => ''),
+    ...shownWelcome,
+    ...Array.from({ length: padBot }, () => ''),
+    ...visibleScroll,
+    ...slash.slice(0, slashTake),
+  ]
 
   const lines: string[] = body.map((line) => padVisible(line, width))
 

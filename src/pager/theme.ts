@@ -57,8 +57,29 @@ export function stripAnsi(s: string): string {
   return s.replace(/\x1b\[[0-9;]*m/g, '')
 }
 
+function isWide(code: number): boolean {
+  return (
+    (code >= 0x1100 && code <= 0x115f) ||
+    (code >= 0x2e80 && code <= 0xa4cf && code !== 0x303f) ||
+    (code >= 0xac00 && code <= 0xd7a3) ||
+    (code >= 0xf900 && code <= 0xfaff) ||
+    (code >= 0xfe10 && code <= 0xfe19) ||
+    (code >= 0xfe30 && code <= 0xfe6f) ||
+    (code >= 0xff00 && code <= 0xff60) ||
+    (code >= 0xffe0 && code <= 0xffe6)
+  )
+}
+
+function charWidth(ch: string): number {
+  const code = ch.codePointAt(0) ?? 0
+  return isWide(code) ? 2 : 1
+}
+
+/** Terminal cells, not JS string length — CJK is two cells. */
 export function visibleWidth(line: string): number {
-  return stripAnsi(line).length
+  let width = 0
+  for (const ch of stripAnsi(line)) width += charWidth(ch)
+  return width
 }
 
 export function clipVisible(line: string, width: number): string {
@@ -69,21 +90,27 @@ export function clipVisible(line: string, width: number): string {
   const re = /\x1b\[[0-9;]*m/g
   let last = 0
   let match = re.exec(line)
-  while (match) {
-    for (let i = last; i < match.index && seen < width; i += 1) {
-      out += line[i]
-      seen += 1
+  const take = (from: number, to: number) => {
+    let i = from
+    while (i < to && seen < width) {
+      const code = line.charCodeAt(i)
+      const wide = code >= 0xd800 && code <= 0xdbff
+      const ch = wide ? line.slice(i, i + 2) : line[i]
+      const step = charWidth(ch)
+      if (seen + step > width) break
+      out += ch
+      seen += step
+      i += ch.length
     }
+  }
+  while (match) {
+    take(last, match.index)
     if (seen >= width) break
     out += match[0]
     last = match.index + match[0].length
     match = re.exec(line)
   }
-  for (let i = last; i < line.length && seen < width; i += 1) {
-    if (line[i] === '\x1b') break
-    out += line[i]
-    seen += 1
-  }
+  take(last, line.length)
   return out + RESET
 }
 
