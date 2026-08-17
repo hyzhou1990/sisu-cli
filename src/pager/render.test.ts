@@ -12,7 +12,7 @@ it('shows a signed-out welcome instead of an empty room', () => {
   const lines = visLines(frame)
   expect(lines).toHaveLength(12)
   expect(lines.every((line) => line.length === 40)).toBe(true)
-  expect(frame).toMatch(/▄|█|▀/)
+  expect(frame).toMatch(/│|╱|╲|•/)
   expect(frame).toContain('Sign in to start')
   expect(frame).toContain('/login')
   expect(frame).toMatch(/›/)

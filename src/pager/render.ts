@@ -1,4 +1,4 @@
-import { sisuMarkArt, sisuMarkLines } from '../mark'
+import { displayWidth, sisuTreeArt, sisuTreeLines, sisuWelcomeCopy } from '../logo'
 import { filterSlash, type PagerEntry, type PagerState } from './model'
 import { getTheme, padVisible, stripAnsi, type PagerTheme, type ThemeName } from './theme'
 
@@ -101,29 +101,23 @@ function isIdleWelcome(state: PagerState): boolean {
   return !state.conversationId && state.entries.length === 0
 }
 
-function center(text: string, width: number, vis = stripAnsi(text).length): string {
+function center(text: string, width: number, vis = displayWidth(text)): string {
   const padLeft = Math.max(0, Math.floor((width - vis) / 2))
   return `${' '.repeat(padLeft)}${text}`
 }
 
-function welcomeLines(guest: boolean, width: number, height: number, theme: PagerTheme): string[] {
-  const markCols = height >= 20 && width >= 48 ? width : 40
-  const raw = sisuMarkLines(markCols)
-  const painted = sisuMarkArt(markCols, true).split('\n')
-  const mark = painted.map((line, i) => center(line, width, raw[i]?.length ?? stripAnsi(line).length))
-  if (guest) {
-    return [
-      ...mark,
-      '',
-      theme.text(center('Sign in to start a conversation.', width)),
-      theme.dim(center('/login  browser    /help  commands', width)),
-    ]
-  }
-  return [
-    ...mark,
-    '',
-    theme.dim(center('Ask anything, or type /help.', width)),
-  ]
+function welcomeLines(guest: boolean, width: number, height: number, _theme: PagerTheme): string[] {
+  const copy = sisuWelcomeCopy(guest, true).map((line) => center(line, width))
+  const treeCols = height >= 18 && width >= 48 ? Math.min(width, 72) : width >= 36 ? 44 : 28
+  const raw = sisuTreeLines(treeCols)
+  const painted = sisuTreeArt(treeCols, true).split('\n')
+  const treeWidth = raw.reduce((max, line) => Math.max(max, line.length), 0)
+  const treePad = Math.max(0, Math.floor((width - treeWidth) / 2))
+  const tree = painted.map((line, i) => {
+    const vis = raw[i]?.length ?? displayWidth(line)
+    return `${' '.repeat(treePad)}${line}${' '.repeat(Math.max(0, treeWidth - vis))}`
+  })
+  return [...copy, '', ...tree]
 }
 
 function slashMenuLines(state: PagerState, theme: PagerTheme): string[] {

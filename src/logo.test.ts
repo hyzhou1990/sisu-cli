@@ -1,30 +1,37 @@
-import { sisuBanner, sisuMarkArt, sisuSplash, sisuWordmark, stripAnsi } from './logo'
-import { markRgb, sisuMarkHeight, sisuMarkLines } from './mark'
+import { displayWidth, sisuBanner, sisuSplash, sisuTreeArt, sisuWordmark, stripAnsi } from './logo'
+import { sisuTreeHeight, sisuTreeLines } from './tree'
 
 describe('sisu logo', () => {
-  it('renders the web Möbius mark as fixed ASCII, not a 3D raster', () => {
+  it('renders the login-page tree, not a Möbius ribbon', () => {
     const splash = sisuSplash(80, false)
     expect(splash).toContain('思溯')
-    expect(splash).toContain('SISU')
-    expect(splash).toMatch(/▄|█|▀/)
-    expect(stripAnsi(sisuMarkArt(80, false))).not.toMatch(/NaN/)
-    expect(sisuMarkLines(80).length).toBe(sisuMarkHeight(80))
+    expect(splash).toContain('SiSu')
+    expect(splash).toContain('思有所溯')
+    expect(splash).toContain('落笔成档')
+    expect(splash).toMatch(/│|╱|╲/)
+    expect(splash).toContain('•')
+    expect(stripAnsi(sisuTreeArt(80, false))).not.toMatch(/NaN/)
+    expect(sisuTreeLines(80).length).toBe(sisuTreeHeight(80))
     expect(sisuWordmark()).toMatch(/思/)
-    expect(sisuBanner(80, 0, false)).toContain('SISU')
+    expect(sisuBanner(80, 0, false)).toContain('思有所溯')
+    const trunks = splash.split('\n').map((line) => line.indexOf('│')).filter((i) => i >= 0)
+    expect(new Set(trunks).size).toBe(1)
   })
 
-  it('uses a compact mark on narrow terminals', () => {
-    expect(sisuMarkLines(40)[0].length).toBeLessThan(sisuMarkLines(80)[0].length)
-    expect(sisuMarkLines(40).length).toBeLessThan(sisuMarkLines(80).length)
+  it('uses a compact tree on narrow terminals', () => {
+    expect(sisuTreeLines(40)[0].length).toBeLessThan(sisuTreeLines(80)[0].length)
+    expect(sisuTreeLines(40).length).toBeLessThan(sisuTreeLines(80).length)
+    expect(sisuSplash(40, false)).toContain('思有所溯')
+    expect(sisuSplash(40, false)).not.toContain('落笔成档')
   })
 
-  it('paints the ribbon with the blue-purple-gold brand gradient', () => {
-    const [lr, lg, lb] = markRgb(0, 40)
-    const [rr, rg, rb] = markRgb(39, 40)
-    expect(lb).toBeGreaterThan(rr)
-    expect(rr).toBeGreaterThan(lr)
-    const colored = sisuMarkArt(80, true)
+  it('paints fruit terracotta and measures CJK as two cells', () => {
+    const colored = sisuSplash(80, true)
+    expect(colored).toContain('\x1b[38;2;184;90;58m')
     expect(colored).toContain('\x1b[38;2;')
     expect(colored).not.toMatch(/NaN/)
+    expect(displayWidth('思溯')).toBe(4)
+    expect(displayWidth('思有所溯')).toBe(8)
+    expect(displayWidth('SiSu')).toBe(4)
   })
 })
