@@ -1,4 +1,4 @@
-import { displayWidth, sisuBanner, sisuSplash, sisuSplashFrame, sisuSplashHeight, sisuWordmark, stripAnsi } from './logo'
+import { displayWidth, SISU_BRAND, sisuBanner, sisuProductSurfaces, sisuSplash, sisuSplashFrame, sisuSplashHeight, sisuWelcomeCopy, sisuWordmark, stripAnsi } from './logo'
 
 describe('sisu logo', () => {
   it('renders the volumetric ∞ Möbius with the wordmark', () => {
@@ -27,5 +27,18 @@ describe('sisu logo', () => {
     expect(displayWidth('思溯')).toBe(4)
     expect(displayWidth('思有所溯')).toBe(8)
     expect(displayWidth('SiSu')).toBe(4)
+  })
+
+  it('first surfaces are 思溯 / SiSu / 思有所溯 with a Möbius frame, not Grok', () => {
+    const surfaces = sisuProductSurfaces()
+    for (const text of [surfaces.splash, surfaces.welcome, surfaces.helpAbout]) {
+      expect(text).toContain(SISU_BRAND.zh)
+      expect(text).toMatch(/SiSu|SISU/)
+      expect(text).toContain(SISU_BRAND.headline)
+      expect(text).not.toMatch(/Grok Build|SpaceXAI|grok\.com/i)
+    }
+    expect(surfaces.splash).toMatch(/[@%#*+=.-]/)
+    expect(sisuWelcomeCopy(true, false).join('\n')).toContain('/login')
+    expect(sisuWordmark()).toContain('思溯')
   })
 })

@@ -14,11 +14,13 @@ import {
   webLoginCommand,
 } from './commands'
 import { defaultHttp, HttpClient } from './http'
+import { SISU_CLIENT_VERSION } from './client'
+import { SISU_BRAND, sisuProductSurfaces } from './logo'
 import { DEFAULT_API_BASE } from './store'
 import { defaultTuiIo, runTui } from './tui'
 
 export function helpText(): string {
-  return `sisu — SiSu local client
+  return `${sisuProductSurfaces().helpAbout}
 
 One login. Cloud quota. Local workspace.
 
@@ -41,7 +43,8 @@ Usage:
   sisu history
   sisu thread <conversation-id>
   sisu training --on|--off
-  sisu                 Grok Build TUI (SiSu account, models, quota)
+  sisu                 interactive TUI (思溯 / SiSu · 思有所溯)
+  sisu --version
   sisu help
 
 Auth and workspaces live in $SISU_HOME (default ~/.sisu), shared with Desktop.
@@ -86,6 +89,10 @@ export async function runCli(
   const [command, ...args] = argv
   if (command === 'help' || command === '--help' || command === '-h') {
     printHelp()
+    return 0
+  }
+  if (command === '--version' || command === '-V' || command === 'version') {
+    process.stdout.write(`sisu ${SISU_CLIENT_VERSION} — ${SISU_BRAND.zh} ${SISU_BRAND.en} · ${SISU_BRAND.headline}\n`)
     return 0
   }
   if (!command || command === 'tui') {

@@ -12,6 +12,30 @@ it('names the web login path plus email/password/token in help', () => {
   expect(text).toMatch(/--email/)
   expect(text).toMatch(/--password/)
   expect(text).toMatch(/--token/)
+  expect(text).toContain('思溯')
+  expect(text).toContain('SiSu')
+  expect(text).toContain('思有所溯')
+  expect(text).not.toMatch(/Grok Build|SpaceXAI/)
+})
+
+it('runCli --version names SiSu, not Grok', async () => {
+  const writes: string[] = []
+  const stdout = jest.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+    writes.push(String(chunk))
+    return true
+  })
+  try {
+    const code = await runCli(['--version'])
+    expect(code).toBe(0)
+    const text = writes.join('')
+    expect(text).toMatch(/^sisu /)
+    expect(text).toContain('思溯')
+    expect(text).toContain('SiSu')
+    expect(text).toContain('思有所溯')
+    expect(text).not.toMatch(/Grok Build|SpaceXAI/)
+  } finally {
+    stdout.mockRestore()
+  }
 })
 
 it('runCli --help prints the web login path', async () => {

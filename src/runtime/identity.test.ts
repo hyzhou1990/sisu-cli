@@ -2,6 +2,8 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { readAuth, writeAuth } from '../store'
+import { helpText } from '../main'
+import { sisuGrokBuildEnv, writeSisuGrokConfig } from './launch'
 import { PRODUCT_BIN, PRODUCT_NAME, assertGrokBuildSuite, grokBuildPath, grokBuildSuitePresent } from './suite'
 
 it('vendors the grok-build suite plus Apache NOTICE/LICENSE', () => {
@@ -26,6 +28,33 @@ it('vendors the grok-build suite plus Apache NOTICE/LICENSE', () => {
   )
   expect(boot).toContain('GROK_XAI_API_BASE_URL')
   expect(boot).toContain('GROK_TELEMETRY_ENABLED')
+  expect(boot).toContain('SISU_HOME')
+  expect(boot).toContain('auth.json')
+  expect(boot).not.toContain('grok.com')
+  expect(boot).not.toContain('auth.x.ai')
+  const welcome = fs.readFileSync(path.join(grokBuildPath('pager'), 'src', 'views', 'welcome', 'mod.rs'), 'utf8')
+  expect(welcome).toMatch(/"SiSu  "/)
+  expect(welcome).not.toMatch(/"Grok Build  "/)
+  const about = fs.readFileSync(path.join(grokBuildPath('pager'), 'src', 'app', 'cli.rs'), 'utf8')
+  expect(about).toContain('SiSu TUI')
+  expect(about).toContain('思有所溯')
+  expect(about).not.toContain('about = "Grok Build TUI"')
+  const logo = fs.readFileSync(path.join(grokBuildPath('pager'), 'assets', 'logo', 'logo07.txt'), 'utf8')
+  expect(logo).toMatch(/[%#*+=.-]/)
+  const hero = fs.readFileSync(path.join(grokBuildPath('pager'), 'src', 'views', 'welcome', 'hero_box.rs'), 'utf8')
+  expect(hero).toContain('思有所溯 · 思溯 SiSu')
+  const bootMain = fs.readFileSync(
+    path.join(path.dirname(grokBuildPath('pager')), 'xai-grok-pager-bin', 'src', 'main.rs'),
+    'utf8',
+  )
+  expect(bootMain).toContain('SiSu TUI — 思溯 · 思有所溯')
+  expect(bootMain).not.toContain('"Grok Build (pager)')
+  const minimal = fs.readFileSync(
+    path.join(path.dirname(grokBuildPath('pager')), 'xai-grok-pager-minimal', 'src', 'welcome.rs'),
+    'utf8',
+  )
+  expect(minimal).toContain('"SiSu"')
+  expect(minimal).not.toContain('"Grok Build"')
 })
 
 it('SiSu identity reads ~/.sisu auth and brands the product', () => {
@@ -45,6 +74,14 @@ it('SiSu identity reads ~/.sisu auth and brands the product', () => {
     expect(fs.existsSync(path.join(home, 'auth.json'))).toBe(true)
     expect(PRODUCT_NAME).toBe('SiSu')
     expect(PRODUCT_BIN).toBe('sisu')
+    const env = sisuGrokBuildEnv()
+    expect(env.XAI_API_KEY).toBe('sisu-jwt')
+    expect(env.GROK_XAI_API_BASE_URL).toBe('https://www.sisu.chat/api/runtime/v1')
+    expect(env.GROK_HOME).toBe(home)
+    expect(env.SISU_HOME).toBe(home)
+    expect(writeSisuGrokConfig()).toBe(path.join(home, 'config.toml'))
+    expect(helpText()).not.toMatch(/grok\.com|auth\.x\.ai|SpaceXAI/)
+    expect(helpText()).toContain('~/.sisu')
   } finally {
     if (previous === undefined) delete process.env.SISU_HOME
     else process.env.SISU_HOME = previous

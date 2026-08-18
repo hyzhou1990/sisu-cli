@@ -8,7 +8,13 @@ const RESET = '\x1b[0m'
 const INK = '\x1b[38;2;220;214;204m'
 const INK_DIM = '\x1b[38;2;140;132;120m'
 
-const HEADLINE = '思有所溯'
+export const SISU_BRAND = {
+  zh: '思溯',
+  en: 'SiSu',
+  headline: '思有所溯',
+} as const
+
+const HEADLINE = SISU_BRAND.headline
 
 export function sisuMobiusArt(columns = 80, phase = 0, color = false): string {
   return renderMobiusFrame({
@@ -20,7 +26,16 @@ export function sisuMobiusArt(columns = 80, phase = 0, color = false): string {
 }
 
 export function sisuWordmark(): string {
-  return ['思溯', 'SISU'].join('\n')
+  return [SISU_BRAND.zh, SISU_BRAND.en.toUpperCase()].join('\n')
+}
+
+/** First-surface copy: splash, welcome, help, about. */
+export function sisuProductSurfaces(): { splash: string; welcome: string; helpAbout: string } {
+  return {
+    splash: stripAnsi(sisuSplash(72, false)),
+    welcome: sisuWelcomeCopy(false, false).join('\n'),
+    helpAbout: `sisu — ${SISU_BRAND.en} · ${SISU_BRAND.zh} · ${SISU_BRAND.headline}`,
+  }
 }
 
 export function displayWidth(text: string): number {

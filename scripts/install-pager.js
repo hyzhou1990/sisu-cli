@@ -41,12 +41,29 @@ function releaseAssetUrl(version, key) {
   return `https://github.com/hyzhou1990/sisu-cli/releases/download/v${version}/xai-grok-pager-${key}.br`
 }
 
+function pagerStampPath(dest) {
+  return `${dest}.version`
+}
+
+function installedPagerVersion(dest) {
+  try {
+    return fs.readFileSync(pagerStampPath(dest), 'utf8').trim()
+  } catch {
+    return ''
+  }
+}
+
 function writeBinary(bytes, dest) {
   fs.mkdirSync(path.dirname(dest), { recursive: true, mode: 0o700 })
   const tmp = `${dest}.tmp.${process.pid}`
   fs.writeFileSync(tmp, bytes)
   if (process.platform !== 'win32') fs.chmodSync(tmp, 0o755)
   fs.renameSync(tmp, dest)
+}
+
+function writePagerStamp(dest, version) {
+  if (!version) return
+  fs.writeFileSync(pagerStampPath(dest), `${version}\n`, { encoding: 'utf8', mode: 0o644 })
 }
 
 function decodePayload(buf) {
@@ -89,18 +106,22 @@ async function installPager(options = {}) {
   if (!SUPPORTED.has(key)) {
     return { ok: false, skipped: true, reason: `no prebuilt pager for ${key}` }
   }
-  if (!options.force && fs.existsSync(dest)) {
+  const have = fs.existsSync(dest)
+  const stamped = have ? installedPagerVersion(dest) : ''
+  if (!options.force && have && version && stamped === version) {
     return { ok: true, dest, skipped: true, reason: 'already installed' }
   }
   if (options.file) {
     const raw = decodePayload(fs.readFileSync(options.file))
     writeBinary(raw, dest)
+    writePagerStamp(dest, version)
     return { ok: true, dest }
   }
   if (!version) return { ok: false, reason: 'missing package version' }
   const url = options.url || releaseAssetUrl(version, key)
   const payload = await download(url)
   writeBinary(decodePayload(payload), dest)
+  writePagerStamp(dest, version)
   return { ok: true, dest, url }
 }
 
@@ -108,10 +129,13 @@ module.exports = {
   SUPPORTED,
   decodePayload,
   installPager,
+  installedPagerVersion,
   pagerBinPath,
+  pagerStampPath,
   platformKey,
   releaseAssetUrl,
   writeBinary,
+  writePagerStamp,
 }
 
 if (require.main === module) {

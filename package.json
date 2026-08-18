@@ -1,7 +1,7 @@
 {
   "name": "@stevezhou/sisu",
-  "version": "0.2.1",
-  "description": "SiSu CLI — Grok Build TUI + SiSu login, models, and quota",
+  "version": "0.2.2",
+  "description": "SiSu CLI — 思溯 / SiSu · 思有所溯",
   "license": "UNLICENSED",
   "homepage": "https://www.sisu.chat",
   "bugs": {
