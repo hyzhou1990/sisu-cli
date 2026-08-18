@@ -15,15 +15,15 @@ export async function fetchModelCatalog(http: HttpClient = defaultHttp): Promise
   defaultModel: string
 }> {
   const auth = requireAuth()
-  const response = await http(`${auth.api_base}/api/chat/models`, { headers: authHeaders(auth.token) })
+  const response = await http(`${auth.api_base}/api/runtime/v1/models`, { headers: authHeaders(auth.token) })
   const body = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(errorDetail(body, `models failed (${response.status})`))
-  const rows = Array.isArray(body?.models) ? body.models : []
+  const rows = Array.isArray(body?.data) ? body.data : []
   const models = rows
-    .map((row: { name?: string; display_name?: string; label?: string }) => {
-      const name = String(row?.name || '').trim()
+    .map((row: { id?: string; name?: string; owned_by?: string }) => {
+      const name = String(row?.id || row?.name || '').trim()
       if (!name) return null
-      return { name, label: String(row.display_name || row.label || name) }
+      return { name, label: String(row?.name || row?.id || name).trim() || name }
     })
     .filter((row: CatalogModel | null): row is CatalogModel => Boolean(row))
   return { models, defaultModel: String(body?.default_model || '') }
