@@ -5,8 +5,16 @@ import { sisuMobiusArt, sisuSplash, sisuSplashFrame, sisuSplashHeight, sisuWordm
 import { mobiusFrameHeight } from './mobius'
 import { runPager, type PagerIo, type RunPagerOptions } from './pager/app'
 import { stdioPagerIo } from './pager/stdio'
-import { readAuth } from './store'
-import { findGrokBuildBinary, sisuGrokBuildEnv, writeSisuGrokConfig } from './runtime/launch'
+import { getSisuHome, readAuth, sisuEngineHome } from './store'
+import {
+  assertRuntimeAvailable,
+  findGrokBuildBinary,
+  migrateGrokScratchToEngine,
+  purgeChangelogCache,
+  RuntimeUnavailable,
+  sisuGrokBuildEnv,
+  writeSisuGrokConfig,
+} from './runtime/launch'
 import { createLocalRuntimeTransport } from './runtime/transport'
 import type { TurnTransport } from './transport'
 import { spawn } from 'child_process'
@@ -35,6 +43,7 @@ export interface TuiDeps {
   sleep?: (ms: number) => Promise<void>
   color?: boolean
   pager?: (io: PagerIo, transport: TurnTransport, options?: RunPagerOptions) => Promise<number>
+  probe?: typeof assertRuntimeAvailable
 }
 
 export function shouldAnimateSplash(env: NodeJS.ProcessEnv = process.env, tty = Boolean(process.stdout.isTTY)): boolean {
@@ -233,12 +242,51 @@ export async function runTui(
   const training = deps.training ?? setTrainingCommand
   const auth = deps.auth ?? readAuth
   const webLogin = deps.webLogin ?? webLoginCommand
+  const probe = deps.probe ?? assertRuntimeAvailable
   const columns = deps.columns ?? process.stdout.columns ?? 80
   const animate = deps.animate ?? shouldAnimateSplash()
 
   try {
-  const account = auth()
-  const usePager = Boolean(deps.pager || shouldUsePager(deps))
+  const startWebLogin = async (notify: (line: string) => void): Promise<string> => {
+    return webLogin({
+      onStart: (info: WebLoginStart) => {
+        notify(`Open ${info.verification_uri_complete}`)
+        notify(`Confirm code ${info.user_code}`)
+      },
+    }, http)
+  }
+
+  let account = auth()
+  if (!account) {
+    try {
+      const email = await startWebLogin((line) => io.write(`${line}\n`))
+      io.write(`logged in as ${email}\n`)
+    } catch (error) {
+      io.write(`${error instanceof Error ? error.message : String(error)}\n`)
+      io.write('login failed — run `sisu login`\n')
+      return 1
+    }
+    account = auth()
+    if (!account) {
+      io.write('login failed — run `sisu login`\n')
+      return 1
+    }
+  }
+
+  let runtimeOk = true
+  try {
+    await probe(http, account.api_base)
+  } catch (error) {
+    if (!(error instanceof RuntimeUnavailable)) throw error
+    runtimeOk = false
+    io.write(
+      `SiSu runtime is not available at ${account.api_base}/api/runtime. ` +
+        `This CLI will not fall back to xAI. Using the Node TUI.\n`,
+    )
+  }
+
+  // Health failure never spawns the pager (injected or grok binary).
+  const usePager = runtimeOk && Boolean(deps.pager || shouldUsePager(deps))
   if (!usePager) {
     if (animate) {
       await playTreeIntro(io, {
@@ -251,18 +299,13 @@ export async function runTui(
     }
   }
 
-  const startWebLogin = async (notify: (line: string) => void): Promise<string> => {
-    return webLogin({
-      onStart: (info: WebLoginStart) => {
-        notify(`Open ${info.verification_uri_complete}`)
-        notify(`Confirm code ${info.user_code}`)
-      },
-    }, http)
-  }
-
   if (usePager && !deps.pager) {
     const grokBin = findGrokBuildBinary()
     if (grokBin && process.stdout.isTTY) {
+      const home = getSisuHome()
+      const engine = sisuEngineHome()
+      migrateGrokScratchToEngine(home)
+      purgeChangelogCache(home, engine)
       writeSisuGrokConfig()
       io.close?.()
       const child = spawn(grokBin, [], { stdio: 'inherit', env: sisuGrokBuildEnv(), cwd: process.cwd() })
@@ -299,7 +342,6 @@ export async function runTui(
   }
 
   io.write(`${await status(http)}\n`)
-  if (!account) io.write('Not logged in. Type /login to sign in with your browser.\n')
   io.write(`${tuiHelp()}\n\n`)
 
   let newConversation = false
