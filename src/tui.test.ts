@@ -185,4 +185,36 @@ describe('sisu tui', () => {
       expect.objectContaining({ email: 'a@b.c' }),
     )
   })
+
+  it('respawns after pager exit code 10 by running SiSu login', async () => {
+    const { io, written } = scriptedIo([])
+    const webLogin = jest.fn().mockResolvedValue('ada@sisu.chat')
+    const spawnGrokPager = jest
+      .fn()
+      .mockResolvedValueOnce(10)
+      .mockResolvedValueOnce(0)
+    const http = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, complete: true, models: true }),
+    })
+    const code = await runTui(io, {
+      auth: () => ({
+        token: 'jwt',
+        email: 'ada@sisu.chat',
+        user_id: 'u1',
+        api_base: 'https://www.sisu.chat',
+      }),
+      webLogin,
+      spawnGrokPager,
+      http,
+      animate: false,
+      color: false,
+      columns: 80,
+    })
+    expect(code).toBe(0)
+    expect(spawnGrokPager).toHaveBeenCalledTimes(2)
+    expect(webLogin).toHaveBeenCalledTimes(1)
+    expect(written.join('')).toMatch(/logged in as ada@sisu\.chat/)
+  })
 })

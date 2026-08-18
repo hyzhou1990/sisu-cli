@@ -28,6 +28,9 @@ export interface LineIo {
   close?(): void
 }
 
+/** Pager exits with this code so the host runs `sisu login` and respawns. */
+export const SISU_LOGIN_EXIT_CODE = 10
+
 export interface TuiDeps {
   http: HttpClient
   status: typeof statusCommand
@@ -44,6 +47,8 @@ export interface TuiDeps {
   sleep?: (ms: number) => Promise<void>
   color?: boolean
   pager?: (io: PagerIo, transport: TurnTransport, options?: RunPagerOptions) => Promise<number>
+  /** Test double / override for the stamped grok-pager child spawn. */
+  spawnGrokPager?: () => Promise<number>
   probe?: typeof assertRuntimeAvailable
 }
 
@@ -287,7 +292,8 @@ export async function runTui(
   }
 
   // Health failure never spawns the pager (injected or grok binary).
-  const usePager = runtimeOk && Boolean(deps.pager || shouldUsePager(deps))
+  const usePager =
+    runtimeOk && Boolean(deps.pager || deps.spawnGrokPager || shouldUsePager(deps))
   if (!usePager) {
     if (animate) {
       await playTreeIntro(io, {
@@ -301,22 +307,51 @@ export async function runTui(
   }
 
   if (usePager && !deps.pager) {
-    const grokBin = findGrokBuildBinary()
-    if (grokBin && process.stdout.isTTY && pagerStampAllowsSpawn(grokBin)) {
-      const home = getSisuHome()
-      const engine = sisuEngineHome()
-      migrateGrokScratchToEngine(home)
-      purgeChangelogCache(home, engine)
-      writeSisuGrokConfig()
-      io.close?.()
-      const child = spawn(grokBin, [], { stdio: 'inherit', env: sisuGrokBuildEnv(), cwd: process.cwd() })
-      return await new Promise((resolve) => {
-        child.on('exit', (code) => resolve(code ?? 1))
-        child.on('error', () => resolve(1))
+    const spawnOnce =
+      deps.spawnGrokPager ??
+      (() => {
+        const grokBin = findGrokBuildBinary()
+        if (!grokBin || !process.stdout.isTTY) {
+          return Promise.resolve(null as number | null)
+        }
+        if (!pagerStampAllowsSpawn(grokBin)) {
+          io.write(
+            'sisu: refusing to spawn a pager older than this CLI. Reinstall the pager or run `sisu` after postinstall.\n',
+          )
+          return Promise.resolve(null as number | null)
+        }
+        const home = getSisuHome()
+        const engine = sisuEngineHome()
+        migrateGrokScratchToEngine(home)
+        purgeChangelogCache(home, engine)
+        writeSisuGrokConfig()
+        io.close?.()
+        const child = spawn(grokBin, [], {
+          stdio: 'inherit',
+          env: sisuGrokBuildEnv(),
+          cwd: process.cwd(),
+        })
+        return new Promise<number>((resolve) => {
+          child.on('exit', (code) => resolve(code ?? 1))
+          child.on('error', () => resolve(1))
+        })
       })
-    }
-    if (grokBin && process.stdout.isTTY && !pagerStampAllowsSpawn(grokBin)) {
-      io.write('sisu: refusing to spawn a pager older than this CLI. Reinstall the pager or run `sisu` after postinstall.\n')
+
+    if (deps.spawnGrokPager || (findGrokBuildBinary() && process.stdout.isTTY)) {
+      // Login handoff: pager exits 10 → host web login → respawn.
+      while (true) {
+        const code = await spawnOnce()
+        if (code === null) break
+        if (code !== SISU_LOGIN_EXIT_CODE) return code
+        try {
+          const email = await startWebLogin((line) => io.write(`${line}\n`))
+          io.write(`logged in as ${email}\n`)
+        } catch (error) {
+          io.write(`${error instanceof Error ? error.message : String(error)}\n`)
+          io.write('login failed — run `sisu login`\n')
+          return 1
+        }
+      }
     }
   }
 
