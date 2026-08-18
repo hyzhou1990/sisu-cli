@@ -45,17 +45,11 @@ export async function fetchModelCatalog(http: HttpClient = defaultHttp): Promise
 }> {
   const auth = requireAuth()
   const headers = authHeaders(auth.token)
-  let fallback = false
-  try {
-    const response = await http(`${auth.api_base}/api/runtime/v1/models`, { headers })
-    if (response.ok) return parseRuntimeCatalog(await response.json().catch(() => ({})))
-    if (!shouldFallbackCatalog(response.status)) {
-      const body = await response.json().catch(() => ({}))
-      throw new Error(errorDetail(body, `models failed (${response.status})`))
-    }
-    fallback = true
-  } catch (error) {
-    if (!fallback && error instanceof Error && /^models failed/.test(error.message)) throw error
+  const runtime = await http(`${auth.api_base}/api/runtime/v1/models`, { headers })
+  if (runtime.ok) return parseRuntimeCatalog(await runtime.json().catch(() => ({})))
+  if (!shouldFallbackCatalog(runtime.status)) {
+    const body = await runtime.json().catch(() => ({}))
+    throw new Error(errorDetail(body, `models failed (${runtime.status})`))
   }
   const response = await http(`${auth.api_base}/api/chat/models`, { headers })
   const body = await response.json().catch(() => ({}))

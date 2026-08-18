@@ -71,6 +71,32 @@ it('fetchModelCatalog falls back to /api/chat/models when runtime is 404', async
   }
 })
 
+it('fetchModelCatalog does not fall back when runtime returns FastAPI 401 detail', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-model-'))
+  const previous = process.env.SISU_HOME
+  process.env.SISU_HOME = home
+  writeAuth({ token: 'jwt', email: 'ada@sisu.chat', user_id: 'u1', api_base: 'https://www.sisu.chat' })
+  const http = jest.fn(async (url: string) => {
+    if (String(url).includes('/api/runtime/v1/models')) {
+      return {
+        ok: false,
+        status: 401,
+        json: async () => ({ detail: 'Not authenticated' }),
+        text: async (): Promise<string> => '',
+      }
+    }
+    throw new Error(`unexpected fallback request ${url}`)
+  })
+  try {
+    await expect(fetchModelCatalog(http)).rejects.toThrow(/Not authenticated|models failed \(401\)/)
+    expect(http.mock.calls.map((row) => row[0])).toEqual(['https://www.sisu.chat/api/runtime/v1/models'])
+  } finally {
+    if (previous === undefined) delete process.env.SISU_HOME
+    else process.env.SISU_HOME = previous
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
 it('first-run exec without last_model uses GET /api/runtime/v1/models default', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-model-'))
   const previous = process.env.SISU_HOME

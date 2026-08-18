@@ -1,0 +1,5 @@
+# Public grok-build snapshot this access-point overlay is applied onto.
+# vendor/grok-build/ stays gitignored; CI fetches this pin then copies overlays/grok-build/.
+repo=https://github.com/xai-org/grok-build.git
+commit=d71f6e0c1f5acc5469e503e192fe14824e6f8c90
+version=1.0.5

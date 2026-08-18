@@ -87,13 +87,13 @@ export function migrateGrokScratchToEngine(home: string): void {
     const to = path.join(engine, name)
     if (!fs.existsSync(from)) continue
     if (fs.existsSync(to)) {
-      // Merge files into existing engine dir, then remove the top-level scratch.
       for (const entry of fs.readdirSync(from)) {
         const src = path.join(from, entry)
         const dest = path.join(to, entry)
         if (!fs.existsSync(dest)) fs.renameSync(src, dest)
       }
-      fs.rmSync(from, { recursive: true, force: true })
+      // Keep leftover colliding entries. Never rm -rf a tree we skipped.
+      if (fs.readdirSync(from).length === 0) fs.rmdirSync(from)
     } else {
       fs.renameSync(from, to)
     }

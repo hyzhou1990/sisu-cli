@@ -173,6 +173,28 @@ it('migrateGrokScratchToEngine moves sessions and leaves SiSu auth.json', () => 
   }
 })
 
+it('migrateGrokScratchToEngine keeps colliding scratch instead of deleting it', () => {
+  const home = makeHome()
+  fs.mkdirSync(path.join(home, 'sessions'))
+  fs.mkdirSync(path.join(home, 'engine', 'sessions'), { recursive: true })
+  fs.writeFileSync(path.join(home, 'sessions', 'keep-me.json'), '{"from":"old"}')
+  fs.writeFileSync(path.join(home, 'engine', 'sessions', 'keep-me.json'), '{"from":"engine"}')
+  fs.writeFileSync(path.join(home, 'sessions', 'only-old.json'), '{"from":"old-only"}')
+  try {
+    migrateGrokScratchToEngine(home)
+    expect(JSON.parse(fs.readFileSync(path.join(home, 'engine', 'sessions', 'keep-me.json'), 'utf8'))).toEqual({
+      from: 'engine',
+    })
+    expect(JSON.parse(fs.readFileSync(path.join(home, 'sessions', 'keep-me.json'), 'utf8'))).toEqual({
+      from: 'old',
+    })
+    expect(fs.existsSync(path.join(home, 'engine', 'sessions', 'only-old.json'))).toBe(true)
+    expect(fs.existsSync(path.join(home, 'sessions', 'only-old.json'))).toBe(false)
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
 it('sisu exec --stub completes a local-agent turn with a tool result twice', async () => {
   const previousHome = process.env.SISU_HOME
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-ws-'))

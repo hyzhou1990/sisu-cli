@@ -11,6 +11,16 @@ const { SUPPORTED, decodePayload, installPager, releaseAssetUrl, writeBinary } =
   writeBinary: (bytes: Buffer, dest: string) => void
 }
 
+it('npm pack includes Apache grok-build NOTICE files', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as { files: string[] }
+  expect(pkg.files).toContain('third_party/grok-build')
+  expect(pkg.files).toContain('NOTICE')
+  const root = path.join(__dirname, '..', 'third_party', 'grok-build')
+  expect(fs.existsSync(path.join(root, 'LICENSE'))).toBe(true)
+  expect(fs.existsSync(path.join(root, 'NOTICE'))).toBe(true)
+  expect(fs.existsSync(path.join(root, 'THIRD-PARTY-NOTICES'))).toBe(true)
+})
+
 it('lists darwin-arm64 plus linux and darwin-x64 pager platforms', () => {
   expect([...SUPPORTED].sort()).toEqual(['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64'].sort())
   for (const key of ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64'] as const) {

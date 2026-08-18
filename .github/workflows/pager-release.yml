@@ -44,13 +44,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Require vendored grok-build
+      - name: Fetch pinned grok-build and apply SiSu overlay
         run: |
           set -euo pipefail
-          if [ ! -d vendor/grok-build/crates/codegen/xai-grok-pager-bin ]; then
-            echo "BLOCKED: vendor/grok-build missing (gitignored). Cannot produce ${{ matrix.platform }} .br here."
-            exit 1
-          fi
+          sh scripts/fetch-grok-build.sh
+          test -f vendor/grok-build/crates/codegen/xai-grok-pager-bin/src/sisu_access_point.rs
+          test -f vendor/grok-build/crates/codegen/xai-grok-shell/src/sisu_access_point.rs
 
       - uses: actions/setup-node@v6
         with:
