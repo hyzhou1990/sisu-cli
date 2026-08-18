@@ -10,14 +10,19 @@ function normalizeModelKey(value: string): string {
   return value.toLowerCase().replace(/[-_.\s]/g, '')
 }
 
-export async function fetchModelCatalog(http: HttpClient = defaultHttp): Promise<{
-  models: CatalogModel[]
-  defaultModel: string
-}> {
-  const auth = requireAuth()
-  const response = await http(`${auth.api_base}/api/chat/models`, { headers: authHeaders(auth.token) })
-  const body = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(errorDetail(body, `models failed (${response.status})`))
+function parseRuntimeCatalog(body: any): { models: CatalogModel[]; defaultModel: string } {
+  const rows = Array.isArray(body?.data) ? body.data : []
+  const models = rows
+    .map((row: { id?: string; name?: string }) => {
+      const name = String(row?.id || row?.name || '').trim()
+      if (!name) return null
+      return { name, label: String(row?.name || row?.id || name).trim() || name }
+    })
+    .filter((row: CatalogModel | null): row is CatalogModel => Boolean(row))
+  return { models, defaultModel: String(body?.default_model || '') }
+}
+
+function parseChatCatalog(body: any): { models: CatalogModel[]; defaultModel: string } {
   const rows = Array.isArray(body?.models) ? body.models : []
   const models = rows
     .map((row: { name?: string; display_name?: string; label?: string }) => {
@@ -27,6 +32,29 @@ export async function fetchModelCatalog(http: HttpClient = defaultHttp): Promise
     })
     .filter((row: CatalogModel | null): row is CatalogModel => Boolean(row))
   return { models, defaultModel: String(body?.default_model || '') }
+}
+
+/** Prod `/api/runtime/v1/models` may 404; fall back to `/api/chat/models`. */
+function shouldFallbackCatalog(status: number): boolean {
+  return status === 404 || status >= 500
+}
+
+export async function fetchModelCatalog(http: HttpClient = defaultHttp): Promise<{
+  models: CatalogModel[]
+  defaultModel: string
+}> {
+  const auth = requireAuth()
+  const headers = authHeaders(auth.token)
+  const runtime = await http(`${auth.api_base}/api/runtime/v1/models`, { headers })
+  if (runtime.ok) return parseRuntimeCatalog(await runtime.json().catch(() => ({})))
+  if (!shouldFallbackCatalog(runtime.status)) {
+    const body = await runtime.json().catch(() => ({}))
+    throw new Error(errorDetail(body, `models failed (${runtime.status})`))
+  }
+  const response = await http(`${auth.api_base}/api/chat/models`, { headers })
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(errorDetail(body, `models failed (${response.status})`))
+  return parseChatCatalog(body)
 }
 
 export function resolveCatalogModel(query: string, models: CatalogModel[]): CatalogModel | undefined {

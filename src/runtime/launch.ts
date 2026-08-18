@@ -1,9 +1,38 @@
 import { spawnSync } from 'child_process'
 import fs from 'fs'
 import path from 'path'
-import { readAuth, getSisuHome } from '../store'
+import { SISU_CLIENT_VERSION } from '../client'
+import { DEFAULT_API_BASE, readAuth, getSisuHome, sisuAuthPath, sisuEngineHome } from '../store'
+import type { HttpClient } from '../http'
 import { grokBuildRoot } from './suite'
 import { openaiCompatUrl } from './adapter'
+
+const SCRATCH_DIRS = ['sessions', 'worktrees', 'hooks', 'logs'] as const
+
+export class RuntimeUnavailable extends Error {
+  constructor(message = 'SiSu runtime is not available') {
+    super(message)
+    this.name = 'RuntimeUnavailable'
+  }
+}
+
+export async function assertRuntimeAvailable(
+  http: HttpClient,
+  apiBase: string,
+): Promise<void> {
+  const url = `${apiBase.replace(/\/+$/, '')}/api/runtime/health`
+  let response: { ok: boolean; status: number; json: () => Promise<unknown> }
+  try {
+    response = await http(url, { headers: { Accept: 'application/json' } })
+  } catch (error) {
+    throw new RuntimeUnavailable(error instanceof Error ? error.message : String(error))
+  }
+  if (!response || !response.ok) {
+    throw new RuntimeUnavailable(`health ${response?.status ?? 'unreachable'}`)
+  }
+  const body = (await response.json().catch(() => null)) as { ok?: boolean } | null
+  if (!body || body.ok !== true) throw new RuntimeUnavailable('health body missing ok')
+}
 
 export function grokBuildBinaryCandidates(): string[] {
   const env = (process.env.SISU_GROK_BIN || '').trim()
@@ -33,10 +62,10 @@ export function sisuRuntimeApiBase(apiBase: string): string {
 
 export function writeSisuGrokConfig(): string {
   const auth = readAuth()
-  const home = getSisuHome()
-  fs.mkdirSync(home, { recursive: true, mode: 0o700 })
-  const file = path.join(home, 'config.toml')
-  const runtimeBase = sisuRuntimeApiBase(auth?.api_base || process.env.SISU_API_BASE || 'https://www.sisu.chat')
+  const engine = sisuEngineHome()
+  fs.mkdirSync(engine, { recursive: true, mode: 0o700 })
+  const file = path.join(engine, 'config.toml')
+  const runtimeBase = sisuRuntimeApiBase(auth?.api_base || process.env.SISU_API_BASE || DEFAULT_API_BASE)
   const body = [
     '# sisu-managed grok-build config — SiSu auth + models + quota',
     '[endpoints]',
@@ -50,23 +79,123 @@ export function writeSisuGrokConfig(): string {
   return file
 }
 
+export function migrateGrokScratchToEngine(home: string): void {
+  const engine = path.join(home, 'engine')
+  fs.mkdirSync(engine, { recursive: true, mode: 0o700 })
+  for (const name of SCRATCH_DIRS) {
+    const from = path.join(home, name)
+    const to = path.join(engine, name)
+    if (!fs.existsSync(from)) continue
+    if (fs.existsSync(to)) {
+      for (const entry of fs.readdirSync(from)) {
+        const src = path.join(from, entry)
+        const dest = path.join(to, entry)
+        if (!fs.existsSync(dest)) fs.renameSync(src, dest)
+      }
+      // Keep leftover colliding entries. Never rm -rf a tree we skipped.
+      if (fs.readdirSync(from).length === 0) fs.rmdirSync(from)
+    } else {
+      fs.renameSync(from, to)
+    }
+  }
+}
+
+export function purgeChangelogCache(home: string, engine: string): void {
+  for (const root of [home, engine]) {
+    if (!fs.existsSync(root)) continue
+    for (const entry of fs.readdirSync(root)) {
+      if (!entry.startsWith('CHANGELOG')) continue
+      try {
+        fs.unlinkSync(path.join(root, entry))
+      } catch {
+        // ignore missing / busy
+      }
+    }
+  }
+}
+
+export function installedPagerPath(): string {
+  return path.join(getSisuHome(), 'bin', process.platform === 'win32' ? 'xai-grok-pager.exe' : 'xai-grok-pager')
+}
+
+export function pagerStampPath(dest = installedPagerPath()): string {
+  return `${dest}.version`
+}
+
+export function installedPagerStamp(dest = installedPagerPath()): string {
+  try {
+    return fs.readFileSync(pagerStampPath(dest), 'utf8').trim()
+  } catch {
+    return ''
+  }
+}
+
+export function comparePagerStamp(stamped: string, release: string): number {
+  const parse = (value: string) => value.trim().split(/[.-]/).map((part) => Number.parseInt(part, 10) || 0)
+  const left = parse(stamped)
+  const right = parse(release)
+  const n = Math.max(left.length, right.length)
+  for (let i = 0; i < n; i += 1) {
+    const delta = (left[i] ?? 0) - (right[i] ?? 0)
+    if (delta !== 0) return delta
+  }
+  return 0
+}
+
+export function pagerStampMeetsRelease(
+  stamped = installedPagerStamp(),
+  release = SISU_CLIENT_VERSION,
+): boolean {
+  if (!stamped || !release) return false
+  return comparePagerStamp(stamped, release) >= 0
+}
+
+/** B-full only when the host env flag is on or the installed pager stamp matches this package. */
+export function accessPointBfullEnabled(): boolean {
+  return process.env.SISU_ACCESS_POINT_BFULL === '1' || pagerStampMeetsRelease()
+}
+
+/** Installed ~/.sisu/bin pager must be this release; other paths (SISU_GROK_BIN / cargo) are dev. */
+export function pagerStampAllowsSpawn(binary: string): boolean {
+  if (path.resolve(binary) !== path.resolve(installedPagerPath())) return true
+  return pagerStampMeetsRelease(installedPagerStamp(binary))
+}
+
 export function sisuGrokBuildEnv(): NodeJS.ProcessEnv {
   const auth = readAuth()
-  const home = getSisuHome()
-  const runtimeBase = auth ? sisuRuntimeApiBase(auth.api_base) : ''
+  const engine = sisuEngineHome()
+  const apiBase = auth?.api_base || process.env.SISU_API_BASE || DEFAULT_API_BASE
+  const runtime = sisuRuntimeApiBase(apiBase)
+  const env = { ...process.env }
+  delete env.SISU_HOME
+  delete env.GROK_CODE_XAI_API_KEY
+  delete env.GROK_DEFAULT_MODEL
+  delete env.SISU_TOKEN
+  if (accessPointBfullEnabled()) {
+    delete env.XAI_API_KEY
+    env.SISU_TOKEN = auth?.token || ''
+  } else {
+    env.XAI_API_KEY = auth?.token || ''
+  }
   return {
-    ...process.env,
-    GROK_HOME: process.env.GROK_HOME || home,
-    SISU_HOME: home,
-    GROK_TELEMETRY_ENABLED: process.env.GROK_TELEMETRY_ENABLED || '0',
-    XAI_API_KEY: process.env.XAI_API_KEY || auth?.token || '',
-    SISU_API_BASE: auth?.api_base || process.env.SISU_API_BASE || 'https://www.sisu.chat',
-    ...(runtimeBase
-      ? {
-          GROK_XAI_API_BASE_URL: runtimeBase,
-          XAI_API_BASE_URL: runtimeBase,
-        }
-      : {}),
+    ...env,
+    SISU_ACCESS_POINT: '1',
+    GROK_HOME: engine,
+    GROK_AUTH_PATH: path.join(engine, 'auth.json'),
+    SISU_AUTH_PATH: sisuAuthPath(),
+    SISU_ACCOUNT_EMAIL: auth?.email || '',
+    SISU_ACCOUNT_PLAN: auth?.plan_code || '',
+    SISU_API_BASE: apiBase,
+    SISU_CLIENT_VERSION,
+    GROK_XAI_API_BASE_URL: runtime,
+    XAI_API_BASE_URL: runtime,
+    GROK_MODELS_BASE_URL: runtime,
+    GROK_MODELS_LIST_URL: `${runtime}/models`,
+    GROK_CLI_CHAT_PROXY_BASE_URL: runtime,
+    GROK_DISABLE_CLI_CHAT_PROXY: '1',
+    GROK_TELEMETRY_ENABLED: '0',
+    GROK_CHANGELOG_OFFLINE: '1',
+    GROK_DISABLE_API_KEY_AUTH: '1',
   }
 }
 

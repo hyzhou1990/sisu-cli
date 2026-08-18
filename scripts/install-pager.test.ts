@@ -3,12 +3,32 @@ import os from 'os'
 import path from 'path'
 import zlib from 'zlib'
 // The installer is a shipped CommonJS file (npm postinstall). Drive that file.
-const { decodePayload, installPager, releaseAssetUrl, writeBinary } = require('./install-pager.js') as {
+const { SUPPORTED, decodePayload, installPager, releaseAssetUrl, writeBinary } = require('./install-pager.js') as {
+  SUPPORTED: Set<string>
   decodePayload: (buf: Buffer) => Buffer
   installPager: (options?: Record<string, unknown>) => Promise<{ ok: boolean; dest?: string; skipped?: boolean }>
   releaseAssetUrl: (version: string, key: string) => string
   writeBinary: (bytes: Buffer, dest: string) => void
 }
+
+it('npm pack includes Apache grok-build NOTICE files', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as { files: string[] }
+  expect(pkg.files).toContain('third_party/grok-build')
+  expect(pkg.files).toContain('NOTICE')
+  const root = path.join(__dirname, '..', 'third_party', 'grok-build')
+  expect(fs.existsSync(path.join(root, 'LICENSE'))).toBe(true)
+  expect(fs.existsSync(path.join(root, 'NOTICE'))).toBe(true)
+  expect(fs.existsSync(path.join(root, 'THIRD-PARTY-NOTICES'))).toBe(true)
+})
+
+it('lists darwin-arm64 plus linux and darwin-x64 pager platforms', () => {
+  expect([...SUPPORTED].sort()).toEqual(['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64'].sort())
+  for (const key of ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64'] as const) {
+    expect(releaseAssetUrl('0.3.0', key)).toBe(
+      `https://github.com/hyzhou1990/sisu-cli/releases/download/v0.3.0/xai-grok-pager-${key}.br`,
+    )
+  }
+})
 
 it('decodes a brotli pager payload like @xai-official/grok', () => {
   const raw = Buffer.from('sisu-grok-pager-fixture')
@@ -34,6 +54,16 @@ it('replaces a stale pager when the package version changes', async () => {
     const skipped = await installPager({ file: nextFile, dest, platform: 'darwin-arm64', version: '0.2.1' })
     expect(skipped.skipped).toBe(true)
     expect(fs.readFileSync(dest).equals(oldRaw)).toBe(true)
+    const forced = await installPager({
+      file: nextFile,
+      dest,
+      platform: 'darwin-arm64',
+      version: '0.2.1',
+      force: true,
+    })
+    expect(forced.ok).toBe(true)
+    expect(forced.skipped).toBeUndefined()
+    expect(fs.readFileSync(dest).equals(nextRaw)).toBe(true)
     const upgraded = await installPager({ file: nextFile, dest, platform: 'darwin-arm64', version: '0.2.2' })
     expect(upgraded.ok).toBe(true)
     expect(upgraded.skipped).toBeUndefined()

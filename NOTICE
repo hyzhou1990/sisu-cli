@@ -5,8 +5,9 @@ This product includes grok-build first-party source (Apache-2.0)
 from https://github.com/xai-org/grok-build, Copyright 2023-2026 SpaceXAI.
 
 The grok-build tree lives at vendor/grok-build/ together with its
-LICENSE and THIRD-PARTY-NOTICES. SiSu二次开发 replaces xAI login,
+LICENSE and THIRD-PARTY-NOTICES. The npm package ships the same
+attribution from third_party/grok-build/. SiSu二次开发 replaces xAI login,
 telemetry defaults, branding, and the model/quota endpoint so the
 user-facing binary is SiSu (`sisu`), not the official `grok` client.
 
-See vendor/grok-build/NOTICE for the grok-build-specific attribution.
+See third_party/grok-build/NOTICE for the grok-build-specific attribution.

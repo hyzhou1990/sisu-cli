@@ -49,6 +49,12 @@ export async function defaultHttp(url: string, init?: RequestInit): Promise<Http
 
 export function errorDetail(body: any, fallback: string): string {
   if (typeof body?.detail === 'string') return body.detail
+  // FastAPI object detail (e.g. 402 quota_exhausted: { message, code }).
+  if (body?.detail && typeof body.detail === 'object') {
+    if (typeof body.detail.message === 'string' && body.detail.message.trim()) {
+      return body.detail.message
+    }
+  }
   if (typeof body?.error === 'string') return body.error
   if (typeof body?.message === 'string') return body.message
   return fallback

@@ -147,3 +147,35 @@ it('follow-up complete after a tool result uses OpenAI function tool_calls', asy
   expect(typeof assistant.tool_calls[0].function.arguments).toBe('string')
   expect(payload.messages[2]).toMatchObject({ role: 'tool', tool_call_id: 'c1', content: 'hello sisu' })
 })
+
+it('402 quota_exhausted surfaces detail.message and never SuperGrok', async () => {
+  const http = jest.fn(async () => ({
+    ok: false,
+    status: 402,
+    json: async () => ({
+      detail: { message: '余额不足，请充值', code: 'quota_exhausted' },
+    }),
+    text: async () => '',
+  }))
+  const model = createSisuCloudModel(http as unknown as HttpClient, {
+    apiBase: 'https://www.sisu.chat',
+    token: 'jwt',
+    client: 'tui',
+  })
+  let message = ''
+  try {
+    await model.complete(request)
+  } catch (err) {
+    message = err instanceof Error ? err.message : String(err)
+  }
+  expect(message).toMatch(/余额不足，请充值/)
+  expect(message).not.toMatch(/SuperGrok|supergrok/i)
+})
+
+it('two complete posts get distinct client_request_id values', () => {
+  const a = buildCompleteRequest(request, { client: 'tui' })
+  const b = buildCompleteRequest(request, { client: 'tui' })
+  expect(a.client_request_id).toBeTruthy()
+  expect(b.client_request_id).toBeTruthy()
+  expect(a.client_request_id).not.toBe(b.client_request_id)
+})

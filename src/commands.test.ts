@@ -379,13 +379,13 @@ describe('sisu commands', () => {
     process.env.SISU_HOME = home
     writeAuth({ token: 'jwt-token', email: 'ada@example.com', user_id: 'u1', api_base: 'https://www.sisu.chat' })
     const http = jest.fn(async (url: string) => {
-      if (String(url).includes('/api/chat/models')) {
+      if (String(url).includes('/api/runtime/v1/models')) {
         return {
           ok: true,
           status: 200,
           json: async () => ({
             default_model: 'kimi-k2.5',
-            models: [{ name: 'kimi-k2.5', display_name: 'Kimi K2.5' }],
+            data: [{ id: 'kimi-k2.5', name: 'Kimi K2.5', owned_by: 'sisu' }],
           }),
           text: async () => '',
         }
@@ -401,7 +401,7 @@ describe('sisu commands', () => {
     const result = await execCommand('summarize this repo', { newConversation: true }, http)
     expect(result.text).toBe('ok from cloud')
     expect(result.conversationId).toBeTruthy()
-    expect(http.mock.calls.map((row) => row[0])).toContain('https://www.sisu.chat/api/chat/models')
+    expect(http.mock.calls.map((row) => row[0])).toContain('https://www.sisu.chat/api/runtime/v1/models')
     const completeCall = http.mock.calls.find((row) => String(row[0]).includes('/api/runtime/complete')) as
       | [string, { body?: string }?]
       | undefined
@@ -424,7 +424,7 @@ describe('sisu commands', () => {
     fs.rmSync(home, { recursive: true, force: true })
   })
 
-  it('lists and switches models from /api/chat/models', async () => {
+  it('lists and switches models from /api/runtime/v1/models', async () => {
     const home = makeHome()
     process.env.SISU_HOME = home
     writeAuth({ token: 'tok', email: 'ada@example.com', user_id: 'u1', api_base: 'https://www.sisu.chat' })
@@ -433,9 +433,9 @@ describe('sisu commands', () => {
       status: 200,
       json: async () => ({
         default_model: 'grok-4.6',
-        models: [
-          { name: 'grok-4.6', display_name: 'Grok 4.6' },
-          { name: 'kimi-code', display_name: 'Kimi Code' },
+        data: [
+          { id: 'grok-4.6', name: 'Grok 4.6', owned_by: 'sisu' },
+          { id: 'kimi-code', name: 'Kimi Code', owned_by: 'sisu' },
         ],
       }),
     })

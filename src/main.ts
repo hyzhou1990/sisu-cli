@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createRequire } from 'module'
 import {
   execCommand,
   listConversationsCommand,
@@ -19,6 +20,23 @@ import { SISU_BRAND, sisuProductSurfaces } from './logo'
 import { DEFAULT_API_BASE } from './store'
 import { defaultTuiIo, runTui } from './tui'
 
+const req = createRequire(__filename)
+
+export type InstallPagerResult = {
+  ok: boolean
+  dest?: string
+  skipped?: boolean
+  reason?: string
+  url?: string
+}
+
+export type InstallPager = (options?: { force?: boolean }) => Promise<InstallPagerResult>
+
+function defaultInstallPager(options?: { force?: boolean }): Promise<InstallPagerResult> {
+  const { installPager } = req('../scripts/install-pager.js') as { installPager: InstallPager }
+  return installPager(options)
+}
+
 export function helpText(): string {
   return `${sisuProductSurfaces().helpAbout}
 
@@ -34,6 +52,7 @@ Usage:
   sisu login --token <jwt> [--api <url>]
   sisu logout
   sisu status
+  sisu update                 reinstall the stamped local pager
   sisu open <dir> --project <project-id>
   sisu ls [--project <project-id>]
   sisu exec "<prompt>" [--project <id>] [--model <name>] [--new] [--stub]
@@ -83,7 +102,7 @@ function parseArgs(args: string[]): { flags: Record<string, string>; rest: strin
 
 export async function runCli(
   argv: string[],
-  deps: { http?: HttpClient } = {},
+  deps: { http?: HttpClient; installPager?: InstallPager } = {},
 ): Promise<number> {
   const http = deps.http ?? defaultHttp
   const [command, ...args] = argv
@@ -97,6 +116,20 @@ export async function runCli(
   }
   if (!command || command === 'tui') {
     return runTui(defaultTuiIo())
+  }
+  if (command === 'update') {
+    const install = deps.installPager ?? defaultInstallPager
+    const result = await install({ force: true })
+    if (result.ok) {
+      process.stdout.write(
+        result.skipped
+          ? `pager already current${result.dest ? ` at ${result.dest}` : ''}\n`
+          : `installed pager${result.dest ? ` to ${result.dest}` : ''}\n`,
+      )
+      return 0
+    }
+    process.stderr.write(`sisu update: ${result.reason || 'pager install failed'}\n`)
+    return result.skipped ? 0 : 1
   }
   if (command === 'status') {
     process.stdout.write(`${await statusCommand(defaultHttp)}\n`)
