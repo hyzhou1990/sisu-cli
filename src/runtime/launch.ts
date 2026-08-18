@@ -1,6 +1,7 @@
 import { spawnSync } from 'child_process'
 import fs from 'fs'
 import path from 'path'
+import { SISU_CLIENT_VERSION } from '../client'
 import { DEFAULT_API_BASE, readAuth, getSisuHome, sisuAuthPath, sisuEngineHome } from '../store'
 import type { HttpClient } from '../http'
 import { grokBuildRoot } from './suite'
@@ -113,9 +114,55 @@ export function purgeChangelogCache(home: string, engine: string): void {
   }
 }
 
+export function installedPagerPath(): string {
+  return path.join(getSisuHome(), 'bin', process.platform === 'win32' ? 'xai-grok-pager.exe' : 'xai-grok-pager')
+}
+
+export function pagerStampPath(dest = installedPagerPath()): string {
+  return `${dest}.version`
+}
+
+export function installedPagerStamp(dest = installedPagerPath()): string {
+  try {
+    return fs.readFileSync(pagerStampPath(dest), 'utf8').trim()
+  } catch {
+    return ''
+  }
+}
+
+export function comparePagerStamp(stamped: string, release: string): number {
+  const parse = (value: string) => value.trim().split(/[.-]/).map((part) => Number.parseInt(part, 10) || 0)
+  const left = parse(stamped)
+  const right = parse(release)
+  const n = Math.max(left.length, right.length)
+  for (let i = 0; i < n; i += 1) {
+    const delta = (left[i] ?? 0) - (right[i] ?? 0)
+    if (delta !== 0) return delta
+  }
+  return 0
+}
+
+export function pagerStampMeetsRelease(
+  stamped = installedPagerStamp(),
+  release = SISU_CLIENT_VERSION,
+): boolean {
+  if (!stamped || !release) return false
+  return comparePagerStamp(stamped, release) >= 0
+}
+
+/** B-full only when the host env flag is on or the installed pager stamp matches this package. */
+export function accessPointBfullEnabled(): boolean {
+  return process.env.SISU_ACCESS_POINT_BFULL === '1' || pagerStampMeetsRelease()
+}
+
+/** Installed ~/.sisu/bin pager must be this release; other paths (SISU_GROK_BIN / cargo) are dev. */
+export function pagerStampAllowsSpawn(binary: string): boolean {
+  if (path.resolve(binary) !== path.resolve(installedPagerPath())) return true
+  return pagerStampMeetsRelease(installedPagerStamp(binary))
+}
+
 export function sisuGrokBuildEnv(): NodeJS.ProcessEnv {
   const auth = readAuth()
-  const home = getSisuHome()
   const engine = sisuEngineHome()
   const apiBase = auth?.api_base || process.env.SISU_API_BASE || DEFAULT_API_BASE
   const runtime = sisuRuntimeApiBase(apiBase)
@@ -123,8 +170,13 @@ export function sisuGrokBuildEnv(): NodeJS.ProcessEnv {
   delete env.SISU_HOME
   delete env.GROK_CODE_XAI_API_KEY
   delete env.GROK_DEFAULT_MODEL
-  // B-lite: overwrite shell key. B-full: delete env.XAI_API_KEY instead.
-  env.XAI_API_KEY = auth?.token || ''
+  delete env.SISU_TOKEN
+  if (accessPointBfullEnabled()) {
+    delete env.XAI_API_KEY
+    env.SISU_TOKEN = auth?.token || ''
+  } else {
+    env.XAI_API_KEY = auth?.token || ''
+  }
   return {
     ...env,
     SISU_ACCESS_POINT: '1',
@@ -134,6 +186,7 @@ export function sisuGrokBuildEnv(): NodeJS.ProcessEnv {
     SISU_ACCOUNT_EMAIL: auth?.email || '',
     SISU_ACCOUNT_PLAN: auth?.plan_code || '',
     SISU_API_BASE: apiBase,
+    SISU_CLIENT_VERSION,
     GROK_XAI_API_BASE_URL: runtime,
     XAI_API_BASE_URL: runtime,
     GROK_MODELS_BASE_URL: runtime,

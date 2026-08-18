@@ -52,7 +52,31 @@ it('vendors the grok-build suite plus Apache NOTICE/LICENSE', () => {
     'utf8',
   )
   expect(bootMain).toContain('SiSu TUI — 思溯 · 思有所溯')
+  expect(bootMain).toContain('sisu_access_point::enforce()')
   expect(bootMain).not.toContain('"Grok Build (pager)')
+  const accessPoint = fs.readFileSync(
+    path.join(path.dirname(grokBuildPath('pager')), 'xai-grok-pager-bin', 'src', 'sisu_access_point.rs'),
+    'utf8',
+  )
+  expect(accessPoint).toContain('pub fn enforce()')
+  expect(accessPoint).toContain('is_sisu_runtime_url')
+  expect(accessPoint).toContain('run `sisu`')
+  expect(accessPoint).not.toMatch(/set_var\(\s*"XAI_API_KEY"/)
+  expect(accessPoint).not.toContain('read_to_string')
+  expect(boot).toContain('SISU_ACCESS_POINT')
+  const homeLib = fs.readFileSync(
+    path.join(path.dirname(grokBuildPath('pager')), 'xai-grok-home', 'src', 'lib.rs'),
+    'utf8',
+  )
+  expect(homeLib).toContain('GROK_HOME')
+  expect(homeLib).toContain('resolve_grok_home_from_envs')
+  const resolution = fs.readFileSync(
+    path.join(path.dirname(grokBuildPath('pager')), 'xai-grok-shell', 'src', 'agent', 'models', 'resolution.rs'),
+    'utf8',
+  )
+  expect(resolution).toContain('sisu_access_point::active()')
+  expect(resolution).toContain('no SiSu model available')
+  expect(resolution).toContain('fn first_or_fallback')
   const minimal = fs.readFileSync(
     path.join(path.dirname(grokBuildPath('pager')), 'xai-grok-pager-minimal', 'src', 'welcome.rs'),
     'utf8',

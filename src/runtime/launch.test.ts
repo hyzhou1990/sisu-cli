@@ -10,6 +10,7 @@ import {
   migrateGrokScratchToEngine,
   purgeChangelogCache,
   RuntimeUnavailable,
+  pagerStampAllowsSpawn,
   sisuGrokBuildEnv,
   writeSisuGrokConfig,
 } from './launch'
@@ -91,6 +92,51 @@ it('B-lite contract: no SISU_HOME on child, engine home, overwritten XAI_API_KEY
     else process.env.GROK_CODE_XAI_API_KEY = previous.code
     if (previous.def === undefined) delete process.env.GROK_DEFAULT_MODEL
     else process.env.GROK_DEFAULT_MODEL = previous.def
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('refuses spawn of an installed pager whose stamp is older than this package', () => {
+  const previousHome = process.env.SISU_HOME
+  const home = makeHome()
+  const dest = path.join(home, 'bin', 'xai-grok-pager')
+  fs.mkdirSync(path.dirname(dest), { recursive: true })
+  fs.writeFileSync(dest, 'old')
+  fs.writeFileSync(`${dest}.version`, '0.0.1\n')
+  try {
+    expect(pagerStampAllowsSpawn(dest)).toBe(false)
+    expect(pagerStampAllowsSpawn(path.join(home, 'elsewhere', 'xai-grok-pager'))).toBe(true)
+  } finally {
+    if (previousHome === undefined) delete process.env.SISU_HOME
+    else process.env.SISU_HOME = previousHome
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('B-full unsets XAI_API_KEY and sets SISU_TOKEN once pager stamp matches', () => {
+  const previous = {
+    home: process.env.SISU_HOME,
+    xai: process.env.XAI_API_KEY,
+    token: process.env.SISU_TOKEN,
+    bfull: process.env.SISU_ACCESS_POINT_BFULL,
+  }
+  process.env.SISU_ACCESS_POINT_BFULL = '1'
+  process.env.XAI_API_KEY = 'sk-xai-from-shell'
+  const home = makeHome()
+  try {
+    const env = sisuGrokBuildEnv()
+    expect(env.XAI_API_KEY).toBeUndefined()
+    expect(env.SISU_TOKEN).toBe('jwt')
+    expect(env.GROK_CODE_XAI_API_KEY).toBeUndefined()
+  } finally {
+    if (previous.home === undefined) delete process.env.SISU_HOME
+    else process.env.SISU_HOME = previous.home
+    if (previous.xai === undefined) delete process.env.XAI_API_KEY
+    else process.env.XAI_API_KEY = previous.xai
+    if (previous.token === undefined) delete process.env.SISU_TOKEN
+    else process.env.SISU_TOKEN = previous.token
+    if (previous.bfull === undefined) delete process.env.SISU_ACCESS_POINT_BFULL
+    else process.env.SISU_ACCESS_POINT_BFULL = previous.bfull
     fs.rmSync(home, { recursive: true, force: true })
   }
 })

@@ -10,6 +10,7 @@ import {
   assertRuntimeAvailable,
   findGrokBuildBinary,
   migrateGrokScratchToEngine,
+  pagerStampAllowsSpawn,
   purgeChangelogCache,
   RuntimeUnavailable,
   sisuGrokBuildEnv,
@@ -301,7 +302,7 @@ export async function runTui(
 
   if (usePager && !deps.pager) {
     const grokBin = findGrokBuildBinary()
-    if (grokBin && process.stdout.isTTY) {
+    if (grokBin && process.stdout.isTTY && pagerStampAllowsSpawn(grokBin)) {
       const home = getSisuHome()
       const engine = sisuEngineHome()
       migrateGrokScratchToEngine(home)
@@ -313,6 +314,9 @@ export async function runTui(
         child.on('exit', (code) => resolve(code ?? 1))
         child.on('error', () => resolve(1))
       })
+    }
+    if (grokBin && process.stdout.isTTY && !pagerStampAllowsSpawn(grokBin)) {
+      io.write('sisu: refusing to spawn a pager older than this CLI. Reinstall the pager or run `sisu` after postinstall.\n')
     }
   }
 
