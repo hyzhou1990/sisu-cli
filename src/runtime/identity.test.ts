@@ -84,6 +84,18 @@ it('vendors the grok-build suite plus Apache NOTICE/LICENSE', () => {
   expect(resolution).toContain('sisu_access_point::active()')
   expect(resolution).toContain('no SiSu model available')
   expect(resolution).toContain('fn first_or_fallback')
+  const shellAccess = fs.readFileSync(
+    path.join(path.dirname(grokBuildPath('pager')), 'xai-grok-shell', 'src', 'sisu_access_point.rs'),
+    'utf8',
+  )
+  expect(shellAccess).toContain('env_nonempty("SISU_TOKEN")')
+  expect(shellAccess).toContain('env_nonempty("XAI_API_KEY")')
+  expect(shellAccess).toContain('b_lite_xai_api_key_is_sisu_bearer_not_welcome_badge')
+  const authMethod = fs.readFileSync(
+    path.join(path.dirname(grokBuildPath('pager')), 'xai-grok-shell', 'src', 'agent', 'auth_method.rs'),
+    'utf8',
+  )
+  expect(authMethod).toMatch(/has_xai_api_key_env[\s\S]*sisu_access_point::active\(\)/)
   const billing = fs.readFileSync(
     path.join(grokBuildPath('pager'), 'src', 'app', 'dispatch', 'billing.rs'),
     'utf8',

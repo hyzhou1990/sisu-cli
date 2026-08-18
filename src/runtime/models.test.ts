@@ -31,6 +31,46 @@ it('fetchModelCatalog uses /api/runtime/v1/models', async () => {
   }
 })
 
+it('fetchModelCatalog falls back to /api/chat/models when runtime is 404', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-model-'))
+  const previous = process.env.SISU_HOME
+  process.env.SISU_HOME = home
+  writeAuth({ token: 'jwt', email: 'ada@sisu.chat', user_id: 'u1', api_base: 'https://www.sisu.chat' })
+  const http = jest.fn(async (url: string) => {
+    if (String(url).includes('/api/runtime/v1/models')) {
+      return {
+        ok: false,
+        status: 404,
+        json: async () => ({ detail: 'not found' }),
+        text: async (): Promise<string> => '',
+      }
+    }
+    expect(url).toBe('https://www.sisu.chat/api/chat/models')
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        default_model: 'kimi-k2.5',
+        models: [{ name: 'kimi-k2.5', display_name: 'Kimi K2.5' }],
+      }),
+      text: async (): Promise<string> => '',
+    }
+  })
+  try {
+    const { models, defaultModel } = await fetchModelCatalog(http)
+    expect(http.mock.calls.map((row) => row[0])).toEqual([
+      'https://www.sisu.chat/api/runtime/v1/models',
+      'https://www.sisu.chat/api/chat/models',
+    ])
+    expect(models[0]).toEqual({ name: 'kimi-k2.5', label: 'Kimi K2.5' })
+    expect(defaultModel).toBe('kimi-k2.5')
+  } finally {
+    if (previous === undefined) delete process.env.SISU_HOME
+    else process.env.SISU_HOME = previous
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
 it('first-run exec without last_model uses GET /api/runtime/v1/models default', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-model-'))
   const previous = process.env.SISU_HOME
