@@ -34,6 +34,16 @@ it('replaces a stale pager when the package version changes', async () => {
     const skipped = await installPager({ file: nextFile, dest, platform: 'darwin-arm64', version: '0.2.1' })
     expect(skipped.skipped).toBe(true)
     expect(fs.readFileSync(dest).equals(oldRaw)).toBe(true)
+    const forced = await installPager({
+      file: nextFile,
+      dest,
+      platform: 'darwin-arm64',
+      version: '0.2.1',
+      force: true,
+    })
+    expect(forced.ok).toBe(true)
+    expect(forced.skipped).toBeUndefined()
+    expect(fs.readFileSync(dest).equals(nextRaw)).toBe(true)
     const upgraded = await installPager({ file: nextFile, dest, platform: 'darwin-arm64', version: '0.2.2' })
     expect(upgraded.ok).toBe(true)
     expect(upgraded.skipped).toBeUndefined()

@@ -53,7 +53,14 @@ it('vendors the grok-build suite plus Apache NOTICE/LICENSE', () => {
   )
   expect(bootMain).toContain('SiSu TUI — 思溯 · 思有所溯')
   expect(bootMain).toContain('sisu_access_point::enforce()')
+  expect(bootMain).toContain('run sisu update')
   expect(bootMain).not.toContain('"Grok Build (pager)')
+  const autoUpdate = fs.readFileSync(
+    path.join(path.dirname(grokBuildPath('pager')), 'xai-grok-update', 'src', 'auto_update.rs'),
+    'utf8',
+  )
+  expect(autoUpdate).toContain('sisu_access_point::active()')
+  expect(autoUpdate).toContain('run sisu update')
   const accessPoint = fs.readFileSync(
     path.join(path.dirname(grokBuildPath('pager')), 'xai-grok-pager-bin', 'src', 'sisu_access_point.rs'),
     'utf8',
