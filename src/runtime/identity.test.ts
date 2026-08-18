@@ -77,6 +77,15 @@ it('vendors the grok-build suite plus Apache NOTICE/LICENSE', () => {
   expect(resolution).toContain('sisu_access_point::active()')
   expect(resolution).toContain('no SiSu model available')
   expect(resolution).toContain('fn first_or_fallback')
+  const billing = fs.readFileSync(
+    path.join(grokBuildPath('pager'), 'src', 'app', 'dispatch', 'billing.rs'),
+    'utf8',
+  )
+  expect(billing).toContain('sisu_access_point::active()')
+  expect(billing).toContain('https://www.sisu.chat')
+  expect(billing).toContain('SiSu 充值')
+  expect(billing).toContain('配额')
+  expect(billing).not.toMatch(/const UPSELL_URL_UPGRADE:\s*&str\s*=\s*"https:\/\/grok\.com\/supergrok/)
   const minimal = fs.readFileSync(
     path.join(path.dirname(grokBuildPath('pager')), 'xai-grok-pager-minimal', 'src', 'welcome.rs'),
     'utf8',
