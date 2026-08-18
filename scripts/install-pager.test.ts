@@ -3,12 +3,22 @@ import os from 'os'
 import path from 'path'
 import zlib from 'zlib'
 // The installer is a shipped CommonJS file (npm postinstall). Drive that file.
-const { decodePayload, installPager, releaseAssetUrl, writeBinary } = require('./install-pager.js') as {
+const { SUPPORTED, decodePayload, installPager, releaseAssetUrl, writeBinary } = require('./install-pager.js') as {
+  SUPPORTED: Set<string>
   decodePayload: (buf: Buffer) => Buffer
   installPager: (options?: Record<string, unknown>) => Promise<{ ok: boolean; dest?: string; skipped?: boolean }>
   releaseAssetUrl: (version: string, key: string) => string
   writeBinary: (bytes: Buffer, dest: string) => void
 }
+
+it('lists darwin-arm64 plus linux and darwin-x64 pager platforms', () => {
+  expect([...SUPPORTED].sort()).toEqual(['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64'].sort())
+  for (const key of ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64'] as const) {
+    expect(releaseAssetUrl('0.3.0', key)).toBe(
+      `https://github.com/hyzhou1990/sisu-cli/releases/download/v0.3.0/xai-grok-pager-${key}.br`,
+    )
+  }
+})
 
 it('decodes a brotli pager payload like @xai-official/grok', () => {
   const raw = Buffer.from('sisu-grok-pager-fixture')
