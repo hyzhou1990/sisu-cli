@@ -1,5 +1,9 @@
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
 import { clientStamp } from '../client'
 import type { HttpClient } from '../http'
+import { readSession, writeAuth, writeSession } from '../store'
 import {
   buildCompleteRequest,
   completeUrl,
@@ -11,6 +15,26 @@ import {
 } from './adapter'
 import { localToolDefinitions } from './tools'
 import type { ModelRequest } from './types'
+
+function withSisuHome(): { home: string; restore: () => void } {
+  const previousHome = process.env.SISU_HOME
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-adapter-'))
+  process.env.SISU_HOME = home
+  writeAuth({
+    token: 'jwt',
+    email: 'ada@sisu.chat',
+    user_id: 'u1',
+    api_base: 'https://www.sisu.chat',
+  })
+  return {
+    home,
+    restore() {
+      if (previousHome === undefined) delete process.env.SISU_HOME
+      else process.env.SISU_HOME = previousHome
+      fs.rmSync(home, { recursive: true, force: true })
+    },
+  }
+}
 
 const request: ModelRequest = {
   model: 'kimi-k2.5',
@@ -87,63 +111,103 @@ it('parses an OpenAI-shaped completion with function tool_calls', () => {
 })
 
 it('createSisuCloudModel posts the real complete payload and parses the response', async () => {
-  const seen: Array<{ url: string; body: string }> = []
-  const http = jest.fn(async (url: string, init?: { body?: string }) => {
-    seen.push({ url, body: String(init?.body || '') })
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({}),
-      text: async () => 'event: tool_call\ndata: {"id":"c2","name":"read_file","arguments":{"target_file":"a.ts"}}\n\n',
-    }
-  })
-  const model = createSisuCloudModel(http as unknown as HttpClient, {
-    apiBase: 'https://www.sisu.chat',
-    token: 'jwt',
-    client: 'tui',
-  })
-  const completion = await model.complete(request)
-  expect(seen[0].url).toBe('https://www.sisu.chat/api/runtime/complete')
-  expect(seen[0].url).not.toContain('/api/chat/send')
-  const payload = JSON.parse(seen[0].body)
-  expect(payload.messages).toEqual(toProviderMessages(request.messages))
-  expect(payload.messages[1].tool_calls[0].function.arguments).toBe(
-    JSON.stringify({ target_file: 'hello.txt' }),
-  )
-  expect(payload.tools.length).toBe(4)
-  expect(payload.task_category).toBeUndefined()
-  expect(completion.tool_calls[0]).toEqual({
-    id: 'c2',
-    name: 'read_file',
-    arguments: { target_file: 'a.ts' },
-  })
+  const { restore } = withSisuHome()
+  try {
+    const seen: Array<{ url: string; body: string }> = []
+    const http = jest.fn(async (url: string, init?: { body?: string }) => {
+      seen.push({ url, body: String(init?.body || '') })
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({}),
+        text: async () => 'event: tool_call\ndata: {"id":"c2","name":"read_file","arguments":{"target_file":"a.ts"}}\n\n',
+      }
+    })
+    const model = createSisuCloudModel(http as unknown as HttpClient, {
+      apiBase: 'https://www.sisu.chat',
+      token: 'jwt',
+      client: 'tui',
+    })
+    const completion = await model.complete(request)
+    expect(seen[0].url).toBe('https://www.sisu.chat/api/runtime/complete')
+    expect(seen[0].url).not.toContain('/api/chat/send')
+    const payload = JSON.parse(seen[0].body)
+    expect(payload.messages).toEqual(toProviderMessages(request.messages))
+    expect(payload.messages[1].tool_calls[0].function.arguments).toBe(
+      JSON.stringify({ target_file: 'hello.txt' }),
+    )
+    expect(payload.tools.length).toBe(4)
+    expect(payload.task_category).toBeUndefined()
+    expect(completion.tool_calls[0]).toEqual({
+      id: 'c2',
+      name: 'read_file',
+      arguments: { target_file: 'a.ts' },
+    })
+  } finally {
+    restore()
+  }
 })
 
 it('follow-up complete after a tool result uses OpenAI function tool_calls', async () => {
-  const seen: string[] = []
-  const http = jest.fn(async (_url: string, init?: { body?: string }) => {
-    seen.push(String(init?.body || ''))
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({}),
-      text: async () => 'event: text\ndata: "done"\n\n',
-    }
-  })
-  const model = createSisuCloudModel(http as unknown as HttpClient, {
-    apiBase: 'https://www.sisu.chat',
-    token: 'jwt',
-    client: 'cli',
-  })
-  await model.complete(request)
-  const payload = JSON.parse(seen[0])
-  const assistant = payload.messages[1]
-  expect(assistant.role).toBe('assistant')
-  expect(assistant.tool_calls[0]).toEqual({
-    id: 'c1',
-    type: 'function',
-    function: { name: 'read_file', arguments: '{"target_file":"hello.txt"}' },
-  })
-  expect(typeof assistant.tool_calls[0].function.arguments).toBe('string')
-  expect(payload.messages[2]).toMatchObject({ role: 'tool', tool_call_id: 'c1', content: 'hello sisu' })
+  const { restore } = withSisuHome()
+  try {
+    const seen: string[] = []
+    const http = jest.fn(async (_url: string, init?: { body?: string }) => {
+      seen.push(String(init?.body || ''))
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({}),
+        text: async () => 'event: text\ndata: "done"\n\n',
+      }
+    })
+    const model = createSisuCloudModel(http as unknown as HttpClient, {
+      apiBase: 'https://www.sisu.chat',
+      token: 'jwt',
+      client: 'cli',
+    })
+    await model.complete(request)
+    const payload = JSON.parse(seen[0])
+    const assistant = payload.messages[1]
+    expect(assistant.role).toBe('assistant')
+    expect(assistant.tool_calls[0]).toEqual({
+      id: 'c1',
+      type: 'function',
+      function: { name: 'read_file', arguments: '{"target_file":"hello.txt"}' },
+    })
+    expect(typeof assistant.tool_calls[0].function.arguments).toBe('string')
+    expect(payload.messages[2]).toMatchObject({ role: 'tool', tool_call_id: 'c1', content: 'hello sisu' })
+  } finally {
+    restore()
+  }
+})
+
+it('complete request headers include x-sisu-conversation-id from session', async () => {
+  const { restore } = withSisuHome()
+  const conversationId = '11111111-1111-1111-1111-111111111111'
+  try {
+    writeSession({ last_conversation_id: conversationId })
+    const seen: Array<{ url: string; headers: Record<string, string> }> = []
+    const http = jest.fn(async (url: string, init?: { headers?: Record<string, string> }) => {
+      seen.push({ url, headers: { ...(init?.headers || {}) } })
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({}),
+        text: async () => 'event: text\ndata: "ok"\n\n',
+      }
+    })
+    const model = createSisuCloudModel(http as unknown as HttpClient, {
+      apiBase: 'https://www.sisu.chat',
+      token: 'jwt',
+      client: 'cli',
+    })
+    await model.complete(request)
+    expect(seen[0].url).toBe('https://www.sisu.chat/api/runtime/complete')
+    expect(seen[0].headers['x-sisu-conversation-id']).toBe(conversationId)
+    expect(seen[0].headers.Authorization).toBe('Bearer jwt')
+    expect(readSession().last_conversation_id).toBe(conversationId)
+  } finally {
+    restore()
+  }
 })

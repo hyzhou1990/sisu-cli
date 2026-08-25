@@ -1,7 +1,7 @@
 import { spawnSync } from 'child_process'
 import fs from 'fs'
 import path from 'path'
-import { readAuth, getSisuHome } from '../store'
+import { ensureConversationId, readAuth, getSisuHome } from '../store'
 import { grokBuildRoot } from './suite'
 import { openaiCompatUrl } from './adapter'
 
@@ -61,6 +61,7 @@ export function sisuGrokBuildEnv(): NodeJS.ProcessEnv {
     GROK_TELEMETRY_ENABLED: process.env.GROK_TELEMETRY_ENABLED || '0',
     XAI_API_KEY: process.env.XAI_API_KEY || auth?.token || '',
     SISU_API_BASE: auth?.api_base || process.env.SISU_API_BASE || 'https://www.sisu.chat',
+    SISU_CONVERSATION_ID: ensureConversationId(),
     ...(runtimeBase
       ? {
           GROK_XAI_API_BASE_URL: runtimeBase,

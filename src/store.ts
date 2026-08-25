@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -101,6 +102,17 @@ export function readSession(): SessionRecord {
 
 export function writeSession(record: SessionRecord): void {
   writeJson(sessionPath(), record)
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function ensureConversationId(): string {
+  const session = readSession()
+  const current = String(session.last_conversation_id || '').trim()
+  if (UUID_RE.test(current)) return current
+  const id = randomUUID()
+  writeSession({ ...session, last_conversation_id: id })
+  return id
 }
 
 export function clearAuth(): void {

@@ -2,7 +2,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { runCli } from '../main'
-import { writeAuth } from '../store'
+import { readSession, writeAuth, writeSession } from '../store'
 import { execCommand } from '../commands'
 import { grokBuildPath } from './suite'
 import { sisuGrokBuildEnv, writeSisuGrokConfig } from './launch'
@@ -18,6 +18,67 @@ function makeHome(): string {
   })
   return home
 }
+
+it('sisuGrokBuildEnv stamps a stable SISU_CONVERSATION_ID', () => {
+  const previousHome = process.env.SISU_HOME
+  const previousConv = process.env.SISU_CONVERSATION_ID
+  const home = makeHome()
+  try {
+    delete process.env.SISU_CONVERSATION_ID
+    const a = sisuGrokBuildEnv()
+    const b = sisuGrokBuildEnv()
+    expect(a.SISU_CONVERSATION_ID).toMatch(/^[0-9a-f-]{36}$/i)
+    expect(a.SISU_CONVERSATION_ID).toBe(b.SISU_CONVERSATION_ID)
+    expect(readSession().last_conversation_id).toBe(a.SISU_CONVERSATION_ID)
+  } finally {
+    if (previousHome === undefined) delete process.env.SISU_HOME
+    else process.env.SISU_HOME = previousHome
+    if (previousConv === undefined) delete process.env.SISU_CONVERSATION_ID
+    else process.env.SISU_CONVERSATION_ID = previousConv
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('sisuGrokBuildEnv keeps a valid UUID last_conversation_id', () => {
+  const previousHome = process.env.SISU_HOME
+  const previousConv = process.env.SISU_CONVERSATION_ID
+  const home = makeHome()
+  const kept = '11111111-1111-1111-1111-111111111111'
+  try {
+    delete process.env.SISU_CONVERSATION_ID
+    writeSession({ last_conversation_id: kept, last_model: 'sisu-lite' })
+    const env = sisuGrokBuildEnv()
+    expect(env.SISU_CONVERSATION_ID).toBe(kept)
+    expect(readSession().last_conversation_id).toBe(kept)
+    expect(readSession().last_model).toBe('sisu-lite')
+  } finally {
+    if (previousHome === undefined) delete process.env.SISU_HOME
+    else process.env.SISU_HOME = previousHome
+    if (previousConv === undefined) delete process.env.SISU_CONVERSATION_ID
+    else process.env.SISU_CONVERSATION_ID = previousConv
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('sisuGrokBuildEnv replaces a non-UUID last_conversation_id', () => {
+  const previousHome = process.env.SISU_HOME
+  const previousConv = process.env.SISU_CONVERSATION_ID
+  const home = makeHome()
+  try {
+    delete process.env.SISU_CONVERSATION_ID
+    writeSession({ last_conversation_id: 'conv-99' })
+    const env = sisuGrokBuildEnv()
+    expect(env.SISU_CONVERSATION_ID).toMatch(/^[0-9a-f-]{36}$/i)
+    expect(env.SISU_CONVERSATION_ID).not.toBe('conv-99')
+    expect(readSession().last_conversation_id).toBe(env.SISU_CONVERSATION_ID)
+  } finally {
+    if (previousHome === undefined) delete process.env.SISU_HOME
+    else process.env.SISU_HOME = previousHome
+    if (previousConv === undefined) delete process.env.SISU_CONVERSATION_ID
+    else process.env.SISU_CONVERSATION_ID = previousConv
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
 
 it('sisuGrokBuildEnv points grok-build at SiSu via GROK_XAI_API_BASE_URL', () => {
   const previousHome = process.env.SISU_HOME
