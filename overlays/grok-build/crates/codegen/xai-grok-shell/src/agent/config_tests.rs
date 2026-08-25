@@ -1057,6 +1057,7 @@ fn test_model_entry(
             agent_type: default_agent_type(),
             inference_idle_timeout_secs: None,
             max_retries: None,
+            subagent_rate_limit_max_attempts: None,
             hidden: false,
             supported_in_api: true,
             reasoning_effort: None,
@@ -1418,157 +1419,6 @@ fn resolve_credentials_sets_auth_type() {
     let creds = resolve_credentials(&byok, Some("tok"));
     assert_eq!(creds.auth_type, AuthType::ApiKey);
 }
-
-#[test]
-#[serial_test::serial]
-fn resolve_credentials_sisu_token_is_session_bearer() {
-    use xai_chat_state::AuthType;
-    use xai_grok_test_support::EnvGuard;
-    let _ap = EnvGuard::set("SISU_ACCESS_POINT", "1");
-    let _tok = EnvGuard::set("SISU_TOKEN", "sisu-jwt");
-    let _xai = EnvGuard::unset("XAI_API_KEY");
-    let _legacy = EnvGuard::unset("GROK_CODE_XAI_API_KEY");
-    let model = test_model_entry(
-        "m",
-        "https://www.sisu.chat/api/runtime/v1",
-        None,
-        None,
-        None,
-    );
-    let creds = resolve_credentials(&model, Some("stale-grok-session"));
-    assert_eq!(creds.auth_type, AuthType::SessionToken);
-    assert_eq!(creds.api_key.as_deref(), Some("sisu-jwt"));
-    assert_ne!(creds.api_key.as_deref(), Some("stale-grok-session"));
-}
-
-#[test]
-#[serial_test::serial]
-fn resolve_credentials_b_lite_xai_api_key_is_session_bearer() {
-    use xai_chat_state::AuthType;
-    use xai_grok_test_support::EnvGuard;
-    let _ap = EnvGuard::set("SISU_ACCESS_POINT", "1");
-    let _tok = EnvGuard::unset("SISU_TOKEN");
-    let _xai = EnvGuard::set("XAI_API_KEY", "jwt-from-b-lite");
-    let _legacy = EnvGuard::unset("GROK_CODE_XAI_API_KEY");
-    let model = test_model_entry(
-        "m",
-        "https://www.sisu.chat/api/runtime/v1",
-        None,
-        None,
-        None,
-    );
-    let creds = resolve_credentials(&model, None);
-    assert_eq!(creds.auth_type, AuthType::SessionToken);
-    assert_eq!(creds.api_key.as_deref(), Some("jwt-from-b-lite"));
-    assert!(!crate::agent::auth_method::has_xai_api_key_env());
-}
-
-#[test]
-#[serial_test::serial]
-fn sampling_config_access_point_stamps_exclude_request_id() {
-    use xai_grok_test_support::EnvGuard;
-    let _ap = EnvGuard::set("SISU_ACCESS_POINT", "1");
-    let _ver = EnvGuard::set("SISU_CLIENT_VERSION", "0.3.0");
-    let model = test_model_entry(
-        "m",
-        "https://www.sisu.chat/api/runtime/v1",
-        None,
-        None,
-        None,
-    );
-    let creds = resolve_credentials(&model, None);
-    let cfg = sampling_config_for_model(&model, creds, None, None, None, None);
-    assert_eq!(
-        cfg.extra_headers.get("x-sisu-client").map(String::as_str),
-        Some("tui")
-    );
-    assert_eq!(
-        cfg.extra_headers
-            .get("x-sisu-client-version")
-            .map(String::as_str),
-        Some("0.3.0")
-    );
-    assert!(!cfg.extra_headers.contains_key("x-sisu-client-request-id"));
-    let injector = cfg.header_injector.expect("header_injector");
-    let mut headers = reqwest::header::HeaderMap::new();
-    injector.inject(&mut headers);
-    let first = headers
-        .get("x-sisu-client-request-id")
-        .expect("request id on first inject")
-        .clone();
-    let mut headers2 = reqwest::header::HeaderMap::new();
-    injector.inject(&mut headers2);
-    let second = headers2
-        .get("x-sisu-client-request-id")
-        .expect("request id on second inject")
-        .clone();
-    assert_ne!(first, second, "fresh x-sisu-client-request-id per inject");
-}
-
-#[test]
-#[serial_test::serial]
-fn access_point_injects_stable_conversation_id() {
-    use xai_grok_test_support::EnvGuard;
-    let _ap = EnvGuard::set("SISU_ACCESS_POINT", "1");
-    let _cid = EnvGuard::set(
-        "SISU_CONVERSATION_ID",
-        "11111111-1111-1111-1111-111111111111",
-    );
-    let model = test_model_entry(
-        "m",
-        "https://www.sisu.chat/api/runtime/v1",
-        None,
-        None,
-        None,
-    );
-    let creds = resolve_credentials(&model, None);
-    let cfg = sampling_config_for_model(&model, creds, None, None, None, None);
-    assert_eq!(
-        cfg.extra_headers
-            .get("x-sisu-conversation-id")
-            .map(String::as_str),
-        Some("11111111-1111-1111-1111-111111111111")
-    );
-    let injector = cfg.header_injector.expect("header_injector");
-    let stamp = || {
-        let mut headers = reqwest::header::HeaderMap::new();
-        for (key, value) in &cfg.extra_headers {
-            if let (Ok(name), Ok(val)) = (
-                reqwest::header::HeaderName::from_bytes(key.as_bytes()),
-                reqwest::header::HeaderValue::from_str(value),
-            ) {
-                headers.insert(name, val);
-            }
-        }
-        injector.inject(&mut headers);
-        headers
-    };
-    let first = stamp();
-    let second = stamp();
-    assert_eq!(
-        first
-            .get("x-sisu-conversation-id")
-            .and_then(|value| value.to_str().ok()),
-        Some("11111111-1111-1111-1111-111111111111")
-    );
-    assert_eq!(
-        first.get("x-sisu-conversation-id"),
-        second.get("x-sisu-conversation-id"),
-        "conversation id is stable across injects"
-    );
-    let first_req = first
-        .get("x-sisu-client-request-id")
-        .expect("request id on first inject")
-        .clone();
-    let second_req = second
-        .get("x-sisu-client-request-id")
-        .expect("request id on second inject")
-        .clone();
-    assert_ne!(
-        first_req, second_req,
-        "fresh x-sisu-client-request-id per inject"
-    );
-}
 /// Regression: BYOK env-var auth must stay ApiKey even when signed in,
 /// otherwise the bearer resolver overwrites the BYOK key with a session JWT.
 #[test]
@@ -1757,6 +1607,52 @@ fn auth_scheme_defaults_to_bearer_when_not_set_in_config() {
     let client = xai_grok_sampler::SamplingClient::new(config).expect("client should build");
     let info = client.auth_info();
     assert_eq!(info.auth_type, "bearer");
+}
+
+#[test]
+#[serial]
+fn access_point_injects_stable_conversation_id() {
+    let _cid = EnvGuard::set(
+        "SISU_CONVERSATION_ID",
+        "11111111-1111-1111-1111-111111111111",
+    );
+    let model = test_model_entry(
+        "m",
+        "https://www.sisu.chat/api/runtime/v1",
+        None,
+        None,
+        None,
+    );
+    let first = sampling_config_for_model(
+        &model,
+        resolve_credentials(&model, None),
+        None,
+        None,
+        None,
+        None,
+    );
+    let second = sampling_config_for_model(
+        &model,
+        resolve_credentials(&model, None),
+        None,
+        None,
+        None,
+        None,
+    );
+    assert_eq!(
+        first
+            .extra_headers
+            .get("x-sisu-conversation-id")
+            .map(String::as_str),
+        Some("11111111-1111-1111-1111-111111111111")
+    );
+    assert_eq!(
+        first.extra_headers.get("x-sisu-conversation-id"),
+        second.extra_headers.get("x-sisu-conversation-id"),
+        "conversation id is stable across sampling_config_for_model calls"
+    );
+    assert!(first.header_injector.is_none());
+    assert!(second.header_injector.is_none());
 }
 #[test]
 fn has_own_credentials_guards_session_vs_external_key() {
@@ -2282,6 +2178,7 @@ fn model_info_from_config_propagates_use_concise() {
         agent_type: default_agent_type(),
         inference_idle_timeout_secs: None,
         max_retries: None,
+        subagent_rate_limit_max_attempts: None,
         hidden: false,
         supported_in_api: true,
         reasoning_effort: None,
@@ -2442,6 +2339,7 @@ fn model_info_from_config_propagates_agent_type() {
         agent_type: "codex".to_string(),
         inference_idle_timeout_secs: None,
         max_retries: None,
+        subagent_rate_limit_max_attempts: None,
         hidden: false,
         supported_in_api: true,
         reasoning_effort: None,
@@ -2894,6 +2792,7 @@ fn inference_idle_timeout_propagates_to_model_info() {
         agent_type: default_agent_type(),
         inference_idle_timeout_secs: Some(120),
         max_retries: None,
+        subagent_rate_limit_max_attempts: None,
         hidden: false,
         supported_in_api: true,
         reasoning_effort: None,
@@ -5343,11 +5242,19 @@ fn known_non_serde_config_paths_are_not_reported_unused() {
             not_a_real_feature = true
             [slash_command_tags]
             workflows = "new"
+            [marketplace]
+            plugin_cta_marketplace = "Acme Marketplace"
         "#,
     );
     assert!(
         !unused.iter().any(|k| k == "features.remote_fetch"),
         "features.remote_fetch must not be treated as a typo: {unused:?}"
+    );
+    assert!(
+        !unused
+            .iter()
+            .any(|k| k == "marketplace.plugin_cta_marketplace"),
+        "the pager-read CTA marketplace override must not warn: {unused:?}"
     );
     assert!(
         !unused.iter().any(|k| k == "features.session_search"),
@@ -6868,6 +6775,7 @@ fn prefetch_model_entry(slug: &str, context_window: u64, api_backend: ApiBackend
             agent_type: default_agent_type(),
             inference_idle_timeout_secs: None,
             max_retries: None,
+            subagent_rate_limit_max_attempts: None,
             hidden: false,
             supported_in_api: true,
             reasoning_effort: None,
@@ -7005,6 +6913,7 @@ fn global_model_defaults_apply_to_model_without_override() {
     cfg.models.max_completion_tokens = Some(4096);
     cfg.models.max_retries = Some(9);
     cfg.models.inference_idle_timeout_secs = Some(600);
+    cfg.models.subagent_rate_limit_max_attempts = Some(12);
     cfg.models.stream_tool_calls = Some(true);
     let entry = prefetch_model_entry("remote-only-model", 200_000, ApiBackend::default());
     let mut prefetched = IndexMap::new();
@@ -7019,6 +6928,7 @@ fn global_model_defaults_apply_to_model_without_override() {
     assert_eq!(info.max_completion_tokens, Some(4096));
     assert_eq!(info.max_retries, Some(9));
     assert_eq!(info.inference_idle_timeout_secs, Some(600));
+    assert_eq!(info.subagent_rate_limit_max_attempts, Some(12));
     assert_eq!(info.stream_tool_calls, Some(true));
 }
 #[test]
@@ -7639,4 +7549,39 @@ fn remote_settings_disarm_requires_prod_proxy_when_keys_embedded() {
         Some(true),
         true,
     );
+}
+#[test]
+fn a_status_line_the_parser_could_not_read_in_full_reaches_grok_inspect() {
+    use super::super::config_model_override_parse::{ConfigWarningKind, WarningTarget};
+    let raw_config: toml::Value = toml::from_str(
+        r#"
+            [ui]
+            theme = "kanagawa"
+
+            [ui.status_line]
+            type = "disabled"
+            padding = "2"
+            colour = "red"
+            "#,
+    )
+    .unwrap();
+    let cfg = Config::new_from_toml_cfg(&raw_config).expect("a typo must not fail the config");
+    let warnings = |path: &str, kind: ConfigWarningKind| {
+        cfg.config_warnings
+            .iter()
+            .filter(|w| {
+                w.kind == kind
+                    && matches!(&w.target, WarningTarget::ConfigKey { path: p } if p == path)
+            })
+            .count()
+    };
+    assert_eq!(
+        warnings("ui.status_line", ConfigWarningKind::InvalidValue),
+        1
+    );
+    assert_eq!(
+        warnings("ui.status_line.colour", ConfigWarningKind::UnknownField),
+        1
+    );
+    assert_eq!(cfg.ui.theme.as_deref(), Some("kanagawa"));
 }
