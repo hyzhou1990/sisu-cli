@@ -170,3 +170,24 @@ it('runCli login --token still prints logged in as', async () => {
     fs.rmSync(home, { recursive: true, force: true })
   }
 })
+
+it('runCli update invokes pager install with force', async () => {
+  const installPager = jest.fn().mockResolvedValue({ ok: true, dest: '/tmp/xai-grok-pager' })
+  const writes: string[] = []
+  const stdout = jest.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+    writes.push(String(chunk))
+    return true
+  })
+  try {
+    const code = await runCli(['update'], { installPager })
+    expect(code).toBe(0)
+    expect(installPager).toHaveBeenCalledWith({ force: true })
+    expect(writes.join('')).toMatch(/pager/i)
+  } finally {
+    stdout.mockRestore()
+  }
+})
+
+it('help lists sisu update', () => {
+  expect(helpText()).toMatch(/sisu update/)
+})

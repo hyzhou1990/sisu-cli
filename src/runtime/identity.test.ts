@@ -39,8 +39,12 @@ it('vendors the grok-build suite plus Apache NOTICE/LICENSE', () => {
   expect(about).toContain('SiSu TUI')
   expect(about).toContain('思有所溯')
   expect(about).not.toContain('about = "Grok Build TUI"')
-  const logo = fs.readFileSync(path.join(grokBuildPath('pager'), 'assets', 'logo', 'logo07.txt'), 'utf8')
-  expect(logo).toMatch(/[%#*+=.-]/)
+  const logoRs = fs.readFileSync(path.join(grokBuildPath('pager'), 'src', 'views', 'welcome', 'logo.rs'), 'utf8')
+  expect(logoRs).toContain('Möbius')
+  expect(logoRs).toContain('mobius::render_frame')
+  const mobiusRs = fs.readFileSync(path.join(grokBuildPath('pager'), 'src', 'views', 'welcome', 'mobius.rs'), 'utf8')
+  expect(mobiusRs).toContain('lemniscate')
+  expect(mobiusRs).toContain('half-twist')
   const hero = fs.readFileSync(path.join(grokBuildPath('pager'), 'src', 'views', 'welcome', 'hero_box.rs'), 'utf8')
   expect(hero).toContain('思有所溯 · 思溯 SiSu')
   const bootMain = fs.readFileSync(
@@ -48,7 +52,59 @@ it('vendors the grok-build suite plus Apache NOTICE/LICENSE', () => {
     'utf8',
   )
   expect(bootMain).toContain('SiSu TUI — 思溯 · 思有所溯')
+  expect(bootMain).toContain('sisu_access_point::enforce()')
+  expect(bootMain).toContain('run sisu update')
   expect(bootMain).not.toContain('"Grok Build (pager)')
+  const autoUpdate = fs.readFileSync(
+    path.join(path.dirname(grokBuildPath('pager')), 'xai-grok-update', 'src', 'auto_update.rs'),
+    'utf8',
+  )
+  expect(autoUpdate).toContain('sisu_access_point::active()')
+  expect(autoUpdate).toContain('run sisu update')
+  const accessPoint = fs.readFileSync(
+    path.join(path.dirname(grokBuildPath('pager')), 'xai-grok-pager-bin', 'src', 'sisu_access_point.rs'),
+    'utf8',
+  )
+  expect(accessPoint).toContain('pub fn enforce()')
+  expect(accessPoint).toContain('is_sisu_runtime_url')
+  expect(accessPoint).toContain('run `sisu`')
+  expect(accessPoint).not.toMatch(/set_var\(\s*"XAI_API_KEY"/)
+  expect(accessPoint).not.toContain('read_to_string')
+  expect(boot).toContain('SISU_ACCESS_POINT')
+  const homeLib = fs.readFileSync(
+    path.join(path.dirname(grokBuildPath('pager')), 'xai-grok-home', 'src', 'lib.rs'),
+    'utf8',
+  )
+  expect(homeLib).toContain('GROK_HOME')
+  expect(homeLib).toContain('resolve_grok_home_from_envs')
+  const resolution = fs.readFileSync(
+    path.join(path.dirname(grokBuildPath('pager')), 'xai-grok-shell', 'src', 'agent', 'models', 'resolution.rs'),
+    'utf8',
+  )
+  expect(resolution).toContain('sisu_access_point::active()')
+  expect(resolution).toContain('no SiSu model available')
+  expect(resolution).toContain('fn first_or_fallback')
+  const shellAccess = fs.readFileSync(
+    path.join(path.dirname(grokBuildPath('pager')), 'xai-grok-shell', 'src', 'sisu_access_point.rs'),
+    'utf8',
+  )
+  expect(shellAccess).toContain('env_nonempty("SISU_TOKEN")')
+  expect(shellAccess).toContain('env_nonempty("XAI_API_KEY")')
+  expect(shellAccess).toContain('b_lite_xai_api_key_is_sisu_bearer_not_welcome_badge')
+  const authMethod = fs.readFileSync(
+    path.join(path.dirname(grokBuildPath('pager')), 'xai-grok-shell', 'src', 'agent', 'auth_method.rs'),
+    'utf8',
+  )
+  expect(authMethod).toMatch(/has_xai_api_key_env[\s\S]*sisu_access_point::active\(\)/)
+  const billing = fs.readFileSync(
+    path.join(grokBuildPath('pager'), 'src', 'app', 'dispatch', 'billing.rs'),
+    'utf8',
+  )
+  expect(billing).toContain('sisu_access_point::active()')
+  expect(billing).toContain('https://www.sisu.chat')
+  expect(billing).toContain('SiSu 充值')
+  expect(billing).toContain('配额')
+  expect(billing).not.toMatch(/const UPSELL_URL_UPGRADE:\s*&str\s*=\s*"https:\/\/grok\.com\/supergrok/)
   const minimal = fs.readFileSync(
     path.join(path.dirname(grokBuildPath('pager')), 'xai-grok-pager-minimal', 'src', 'welcome.rs'),
     'utf8',
@@ -77,9 +133,9 @@ it('SiSu identity reads ~/.sisu auth and brands the product', () => {
     const env = sisuGrokBuildEnv()
     expect(env.XAI_API_KEY).toBe('sisu-jwt')
     expect(env.GROK_XAI_API_BASE_URL).toBe('https://www.sisu.chat/api/runtime/v1')
-    expect(env.GROK_HOME).toBe(home)
-    expect(env.SISU_HOME).toBe(home)
-    expect(writeSisuGrokConfig()).toBe(path.join(home, 'config.toml'))
+    expect(env.GROK_HOME).toBe(path.join(home, 'engine'))
+    expect(env.SISU_HOME).toBeUndefined()
+    expect(writeSisuGrokConfig()).toBe(path.join(home, 'engine', 'config.toml'))
     expect(helpText()).not.toMatch(/grok\.com|auth\.x\.ai|SpaceXAI/)
     expect(helpText()).toContain('~/.sisu')
   } finally {
