@@ -1,6 +1,7 @@
 import { clientStamp, type SisuClientKind } from '../client'
 import { authHeaders, errorDetail, HttpClient } from '../http'
 import { consumeSse, sseEventText } from '../sse'
+import { ensureConversationId } from '../store'
 import { COMPLETE_PATH, OPENAI_COMPAT_PATH } from './suite'
 import type { ModelClient, ModelCompletion, ModelMessage, ModelRequest, ToolCall } from './types'
 
@@ -40,6 +41,13 @@ export function completeUrl(apiBase: string): string {
 
 export function openaiCompatUrl(apiBase: string): string {
   return `${apiBase.replace(/\/+$/, '')}${OPENAI_COMPAT_PATH}`
+}
+
+export function completeHeaders(token: string): Record<string, string> {
+  return {
+    ...authHeaders(token),
+    'x-sisu-conversation-id': ensureConversationId(),
+  }
 }
 
 export function buildCompleteRequest(
@@ -140,7 +148,7 @@ export function createSisuCloudModel(
       }
       const sent = await http(completeUrl(options.apiBase), {
         method: 'POST',
-        headers: authHeaders(options.token),
+        headers: completeHeaders(options.token),
         body: JSON.stringify(payload),
       })
       if (!sent.ok) {

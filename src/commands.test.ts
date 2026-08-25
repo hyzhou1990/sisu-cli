@@ -17,7 +17,7 @@ import {
   statusCommand,
   webLoginCommand,
 } from './commands'
-import { readAuth, readSession, writeAuth } from './store'
+import { readAuth, readSession, writeAuth, writeSession } from './store'
 
 function makeHome(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-cmd-'))
@@ -379,13 +379,13 @@ describe('sisu commands', () => {
     process.env.SISU_HOME = home
     writeAuth({ token: 'jwt-token', email: 'ada@example.com', user_id: 'u1', api_base: 'https://www.sisu.chat' })
     const http = jest.fn(async (url: string) => {
-      if (String(url).includes('/api/chat/models')) {
+      if (String(url).includes('/api/runtime/v1/models')) {
         return {
           ok: true,
           status: 200,
           json: async () => ({
-            default_model: 'kimi-k2.5',
-            models: [{ name: 'kimi-k2.5', display_name: 'Kimi K2.5' }],
+            default_model: 'sisu-lite',
+            data: [{ id: 'sisu-lite', name: 'SiSu-Lite', owned_by: 'sisu' }],
           }),
           text: async () => '',
         }
@@ -401,13 +401,13 @@ describe('sisu commands', () => {
     const result = await execCommand('summarize this repo', { newConversation: true }, http)
     expect(result.text).toBe('ok from cloud')
     expect(result.conversationId).toBeTruthy()
-    expect(http.mock.calls.map((row) => row[0])).toContain('https://www.sisu.chat/api/chat/models')
+    expect(http.mock.calls.map((row) => row[0])).toContain('https://www.sisu.chat/api/runtime/v1/models')
     const completeCall = http.mock.calls.find((row) => String(row[0]).includes('/api/runtime/complete')) as
       | [string, { body?: string }?]
       | undefined
     expect(completeCall?.[0]).toBe('https://www.sisu.chat/api/runtime/complete')
     const body = JSON.parse(String(completeCall?.[1]?.body || '{}'))
-    expect(body.model).toBe('kimi-k2.5')
+    expect(body.model).toBe('sisu-lite')
     expect(body.model).not.toBe('sisu-default')
     expect(body.messages).toEqual([{ role: 'user', content: 'summarize this repo' }])
     expect(body.tools.map((tool: { function: { name: string } }) => tool.function.name)).toEqual([
@@ -424,7 +424,7 @@ describe('sisu commands', () => {
     fs.rmSync(home, { recursive: true, force: true })
   })
 
-  it('lists and switches models from /api/chat/models', async () => {
+  it('lists and switches models from /api/runtime/v1/models', async () => {
     const home = makeHome()
     process.env.SISU_HOME = home
     writeAuth({ token: 'tok', email: 'ada@example.com', user_id: 'u1', api_base: 'https://www.sisu.chat' })
@@ -432,18 +432,24 @@ describe('sisu commands', () => {
       ok: true,
       status: 200,
       json: async () => ({
-        default_model: 'grok-4.6',
-        models: [
-          { name: 'grok-4.6', display_name: 'Grok 4.6' },
-          { name: 'kimi-code', display_name: 'Kimi Code' },
+        default_model: 'sisu-lite',
+        data: [
+          { id: 'sisu-lite', name: 'SiSu-Lite', owned_by: 'sisu' },
+          { id: 'sisu-pro', name: 'SiSu-Pro', owned_by: 'sisu' },
         ],
       }),
     })
     const listed = await listModelsCommand(http)
-    expect(listed).toContain('* grok-4.6')
-    expect(listed).toContain('kimi-code')
-    expect(await setModelCommand('Kimi Code', http)).toBe('model kimi-code')
-    expect(readSession().last_model).toBe('kimi-code')
+    expect(listed).toContain('* sisu-lite')
+    expect(listed).toContain('sisu-pro')
+    expect(listed).not.toContain('claude')
+    expect(listed).not.toContain('grok-4.6')
+    writeSession({ ...readSession(), last_model: 'claude-opus-4.8' })
+    const listedStale = await listModelsCommand(http)
+    expect(listedStale).toContain('* sisu-lite')
+    expect(listedStale).not.toContain('claude-opus-4.8')
+    expect(await setModelCommand('SiSu-Pro', http)).toBe('model sisu-pro')
+    expect(readSession().last_model).toBe('sisu-pro')
     await expect(setModelCommand('nope', http)).rejects.toThrow(/unknown model/)
     fs.rmSync(home, { recursive: true, force: true })
   })

@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -85,6 +86,7 @@ export function readAuth(): AuthRecord | null {
 }
 
 export function writeAuth(record: AuthRecord): void {
+  const previous = readAuth()
   writeJson(authPath(), {
     token: record.token,
     email: record.email,
@@ -93,6 +95,12 @@ export function writeAuth(record: AuthRecord): void {
     plan_code: record.plan_code || '',
     name: record.name || '',
   })
+  if (previous && previous.user_id !== record.user_id) {
+    const session = readSession()
+    if (session.last_conversation_id) {
+      writeSession({ ...session, last_conversation_id: undefined })
+    }
+  }
 }
 
 export function readSession(): SessionRecord {
@@ -101,6 +109,17 @@ export function readSession(): SessionRecord {
 
 export function writeSession(record: SessionRecord): void {
   writeJson(sessionPath(), record)
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function ensureConversationId(): string {
+  const session = readSession()
+  const current = String(session.last_conversation_id || '').trim()
+  if (UUID_RE.test(current)) return current
+  const id = randomUUID()
+  writeSession({ ...session, last_conversation_id: id })
+  return id
 }
 
 export function clearAuth(): void {

@@ -2,7 +2,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { runCli } from '../main'
-import { writeAuth } from '../store'
+import { readSession, writeAuth, writeSession } from '../store'
 import { execCommand } from '../commands'
 import { grokBuildPath } from './suite'
 import { sisuGrokBuildEnv, writeSisuGrokConfig } from './launch'
@@ -19,6 +19,84 @@ function makeHome(): string {
   return home
 }
 
+it('sisuGrokBuildEnv stamps a stable SISU_CONVERSATION_ID', () => {
+  const previousHome = process.env.SISU_HOME
+  const previousConv = process.env.SISU_CONVERSATION_ID
+  const home = makeHome()
+  try {
+    delete process.env.SISU_CONVERSATION_ID
+    const a = sisuGrokBuildEnv()
+    const b = sisuGrokBuildEnv()
+    expect(a.SISU_CONVERSATION_ID).toMatch(/^[0-9a-f-]{36}$/i)
+    expect(a.SISU_CONVERSATION_ID).toBe(b.SISU_CONVERSATION_ID)
+    expect(readSession().last_conversation_id).toBe(a.SISU_CONVERSATION_ID)
+  } finally {
+    if (previousHome === undefined) delete process.env.SISU_HOME
+    else process.env.SISU_HOME = previousHome
+    if (previousConv === undefined) delete process.env.SISU_CONVERSATION_ID
+    else process.env.SISU_CONVERSATION_ID = previousConv
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('sisuGrokBuildEnv keeps a valid UUID last_conversation_id', () => {
+  const previousHome = process.env.SISU_HOME
+  const previousConv = process.env.SISU_CONVERSATION_ID
+  const home = makeHome()
+  const kept = '11111111-1111-1111-1111-111111111111'
+  try {
+    delete process.env.SISU_CONVERSATION_ID
+    writeSession({ last_conversation_id: kept, last_model: 'sisu-lite' })
+    const env = sisuGrokBuildEnv()
+    expect(env.SISU_CONVERSATION_ID).toBe(kept)
+    expect(readSession().last_conversation_id).toBe(kept)
+    expect(readSession().last_model).toBe('sisu-lite')
+  } finally {
+    if (previousHome === undefined) delete process.env.SISU_HOME
+    else process.env.SISU_HOME = previousHome
+    if (previousConv === undefined) delete process.env.SISU_CONVERSATION_ID
+    else process.env.SISU_CONVERSATION_ID = previousConv
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('sisuGrokBuildEnv replaces a non-UUID last_conversation_id', () => {
+  const previousHome = process.env.SISU_HOME
+  const previousConv = process.env.SISU_CONVERSATION_ID
+  const home = makeHome()
+  try {
+    delete process.env.SISU_CONVERSATION_ID
+    writeSession({ last_conversation_id: 'conv-99' })
+    const env = sisuGrokBuildEnv()
+    expect(env.SISU_CONVERSATION_ID).toMatch(/^[0-9a-f-]{36}$/i)
+    expect(env.SISU_CONVERSATION_ID).not.toBe('conv-99')
+    expect(readSession().last_conversation_id).toBe(env.SISU_CONVERSATION_ID)
+  } finally {
+    if (previousHome === undefined) delete process.env.SISU_HOME
+    else process.env.SISU_HOME = previousHome
+    if (previousConv === undefined) delete process.env.SISU_CONVERSATION_ID
+    else process.env.SISU_CONVERSATION_ID = previousConv
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('sisuGrokBuildEnv unsets GROK_DEFAULT_MODEL', () => {
+  const previousHome = process.env.SISU_HOME
+  const previousDefault = process.env.GROK_DEFAULT_MODEL
+  const home = makeHome()
+  try {
+    process.env.GROK_DEFAULT_MODEL = 'grok-4.6'
+    const env = sisuGrokBuildEnv()
+    expect(env.GROK_DEFAULT_MODEL).toBeUndefined()
+  } finally {
+    if (previousHome === undefined) delete process.env.SISU_HOME
+    else process.env.SISU_HOME = previousHome
+    if (previousDefault === undefined) delete process.env.GROK_DEFAULT_MODEL
+    else process.env.GROK_DEFAULT_MODEL = previousDefault
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
 it('sisuGrokBuildEnv points grok-build at SiSu via GROK_XAI_API_BASE_URL', () => {
   const previousHome = process.env.SISU_HOME
   const home = makeHome()
@@ -26,6 +104,8 @@ it('sisuGrokBuildEnv points grok-build at SiSu via GROK_XAI_API_BASE_URL', () =>
     const env = sisuGrokBuildEnv()
     expect(env.GROK_XAI_API_BASE_URL).toBe('https://www.sisu.chat/api/runtime/v1')
     expect(env.GROK_XAI_API_BASE_URL).toContain('/api/runtime/v1')
+    expect(env.GROK_MODELS_LIST_URL).toBe('https://www.sisu.chat/api/runtime/v1/models')
+    expect(env.GROK_MODELS_BASE_URL).toBe('https://www.sisu.chat/api/runtime/v1')
     expect(env.GROK_TELEMETRY_ENABLED).toBe('0')
     const configPath = writeSisuGrokConfig()
     expect(fs.readFileSync(configPath, 'utf8')).toContain('xai_api_base_url = "https://www.sisu.chat/api/runtime/v1"')
