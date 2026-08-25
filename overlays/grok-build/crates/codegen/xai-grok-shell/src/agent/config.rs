@@ -13,7 +13,7 @@ use std::num::NonZeroU64;
 use std::path::PathBuf;
 use std::sync::Arc;
 use xai_grok_agent::prompt::skills::SkillsConfig;
-use xai_grok_sampler::{AuthScheme, SamplerConfig};
+use xai_grok_sampler::{AuthScheme, HeaderInjector, SamplerConfig};
 use xai_grok_sampling_types::{
     CompactionAtTokens, CompactionsRemaining, REASONING_EFFORT_META_KEY,
     REASONING_EFFORTS_META_KEY, ReasoningEffort, ReasoningEffortOption,
@@ -4798,6 +4798,18 @@ pub(crate) fn resolve_credentials(
     session_key: Option<&str>,
 ) -> ResolvedCredentials {
     let info = model.info();
+    if crate::sisu_access_point::active() {
+        if let Some(token) = crate::sisu_access_point::sisu_token() {
+            let base_url = crate::sisu_access_point::pin_runtime_url(&info.base_url)
+                .unwrap_or_else(|| info.base_url.clone());
+            return ResolvedCredentials {
+                api_key: Some(token),
+                base_url,
+                auth_type: xai_chat_state::AuthType::SessionToken,
+                auth_scheme: info.auth_scheme,
+            };
+        }
+    }
     let (api_key, base_url, auth_type) = if let Some(key) = model.own_credential() {
         (
             Some(key),
@@ -4814,6 +4826,12 @@ pub(crate) fn resolve_credentials(
     } else if let Some(key) = session_key {
         (
             Some(key.to_owned()),
+            info.base_url.clone(),
+            xai_chat_state::AuthType::SessionToken,
+        )
+    } else if let Some(token) = crate::sisu_access_point::sisu_token() {
+        (
+            Some(token),
             info.base_url.clone(),
             xai_chat_state::AuthType::SessionToken,
         )
@@ -5185,12 +5203,21 @@ pub(crate) fn sampling_config_for_model(
         alpha_test_key.as_deref(),
         &credentials.base_url,
     );
-    if let Ok(id) = std::env::var("SISU_CONVERSATION_ID") {
-        let id = id.trim().to_string();
-        if !id.is_empty() {
-            extra_headers
-                .entry("x-sisu-conversation-id".to_string())
-                .or_insert(id);
+    if crate::sisu_access_point::active() {
+        extra_headers
+            .entry("x-sisu-client".to_string())
+            .or_insert_with(|| "tui".to_string());
+        extra_headers
+            .entry("x-sisu-client-version".to_string())
+            .or_insert_with(crate::sisu_access_point::client_version);
+        extra_headers.shift_remove("x-sisu-client-request-id");
+        if let Ok(id) = std::env::var("SISU_CONVERSATION_ID") {
+            let id = id.trim().to_string();
+            if !id.is_empty() {
+                extra_headers
+                    .entry("x-sisu-conversation-id".to_string())
+                    .or_insert(id);
+            }
         }
     }
     let api_backend = info.api_backend.clone();
@@ -5229,8 +5256,48 @@ pub(crate) fn sampling_config_for_model(
         compactions_remaining: info.compactions_remaining,
         compaction_at_tokens: info.compaction_at_tokens,
         doom_loop_recovery: None,
-        header_injector: None,
+        header_injector: if crate::sisu_access_point::active() {
+            Some(std::sync::Arc::new(SisuClientRequestIdInjector))
+        } else {
+            None
+        },
     }
+}
+
+#[derive(Debug)]
+pub(crate) struct SisuClientRequestIdInjector;
+
+impl HeaderInjector for SisuClientRequestIdInjector {
+    fn inject(&self, headers: &mut reqwest::header::HeaderMap) {
+        if !crate::sisu_access_point::active() {
+            return;
+        }
+        let id = uuid::Uuid::new_v4().to_string();
+        if let Ok(value) = reqwest::header::HeaderValue::from_str(&id) {
+            headers.insert("x-sisu-client-request-id", value);
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct CompositeHeaderInjector {
+    injectors: Vec<std::sync::Arc<dyn HeaderInjector>>,
+}
+
+impl HeaderInjector for CompositeHeaderInjector {
+    fn inject(&self, headers: &mut reqwest::header::HeaderMap) {
+        for injector in &self.injectors {
+            injector.inject(headers);
+        }
+    }
+}
+
+pub(crate) fn compose_header_injectors(
+    injectors: impl IntoIterator<Item = std::sync::Arc<dyn HeaderInjector>>,
+) -> std::sync::Arc<dyn HeaderInjector> {
+    std::sync::Arc::new(CompositeHeaderInjector {
+        injectors: injectors.into_iter().collect(),
+    })
 }
 /// Fold URL-derived headers into `extra_headers`.
 ///

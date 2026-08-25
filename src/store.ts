@@ -25,8 +25,16 @@ export function getSisuHome(): string {
   return override || path.join(os.homedir(), '.sisu')
 }
 
-function authPath(): string {
+export function sisuEngineHome(): string {
+  return path.join(getSisuHome(), 'engine')
+}
+
+export function sisuAuthPath(): string {
   return path.join(getSisuHome(), 'auth.json')
+}
+
+function authPath(): string {
+  return sisuAuthPath()
 }
 
 function workspacePath(): string {

@@ -1,0 +1,11 @@
+grok-build
+Copyright 2023-2026 SpaceXAI
+
+Licensed under the Apache License, Version 2.0.
+See LICENSE and THIRD-PARTY-NOTICES in this directory.
+
+This copy is vendored into SiSu CLI as the local coding-agent
+harness (agent loop, tools, TUI, skills, plugins, hooks, MCP,
+subagents). SiSu二次开发 wires ~/.sisu identity and SiSu cloud
+inference. It is not the official `grok` binary and does not
+require an xAI login when a SiSu token is present.
