@@ -114,6 +114,8 @@ it('resolves sisu-pro aliases and rejects kimi', async () => {
   expect(resolveCatalogModel('kimi', models)).toBeUndefined()
   expect(resolveCatalogModel('kimi-k3', models)).toBeUndefined()
   expect(resolveCatalogModel('claude', models)).toBeUndefined()
+  expect(resolveCatalogModel('grok-4.6', models)).toBeUndefined()
+  expect(resolveCatalogModel('k3', models)).toBeUndefined()
 })
 
 it('drops stale last_model and uses default sisu-lite', async () => {

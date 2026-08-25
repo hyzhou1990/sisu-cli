@@ -86,6 +86,7 @@ export function readAuth(): AuthRecord | null {
 }
 
 export function writeAuth(record: AuthRecord): void {
+  const previous = readAuth()
   writeJson(authPath(), {
     token: record.token,
     email: record.email,
@@ -94,6 +95,12 @@ export function writeAuth(record: AuthRecord): void {
     plan_code: record.plan_code || '',
     name: record.name || '',
   })
+  if (previous && previous.user_id !== record.user_id) {
+    const session = readSession()
+    if (session.last_conversation_id) {
+      writeSession({ ...session, last_conversation_id: undefined })
+    }
+  }
 }
 
 export function readSession(): SessionRecord {

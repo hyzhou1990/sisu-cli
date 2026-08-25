@@ -376,16 +376,14 @@ export async function setTrainingCommand(optIn: boolean, http: HttpClient = defa
 
 export async function listModelsCommand(http: HttpClient = defaultHttp): Promise<string> {
   const { models, defaultModel } = await fetchModelCatalog(http)
-  const current = readSession().last_model || defaultModel
+  const last = readSession().last_model || ''
+  const current = models.some((row) => row.name === last) ? last : defaultModel
   if (!current && !models.length) return 'no models available'
   const lines = models.map((row) => {
     const mark = row.name === current ? '* ' : '  '
     const extra = row.label !== row.name ? `  ${row.label}` : ''
     return `${mark}${row.name}${extra}`
   })
-  if (current && !models.some((row) => row.name === current)) {
-    lines.unshift(`* ${current}`)
-  }
   return lines.join('\n') || `* ${current}`
 }
 

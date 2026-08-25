@@ -54,8 +54,10 @@ export function sisuGrokBuildEnv(): NodeJS.ProcessEnv {
   const auth = readAuth()
   const home = getSisuHome()
   const runtimeBase = auth ? sisuRuntimeApiBase(auth.api_base) : ''
+  const env = { ...process.env }
+  delete env.GROK_DEFAULT_MODEL
   return {
-    ...process.env,
+    ...env,
     GROK_HOME: process.env.GROK_HOME || home,
     SISU_HOME: home,
     GROK_TELEMETRY_ENABLED: process.env.GROK_TELEMETRY_ENABLED || '0',
@@ -66,6 +68,8 @@ export function sisuGrokBuildEnv(): NodeJS.ProcessEnv {
       ? {
           GROK_XAI_API_BASE_URL: runtimeBase,
           XAI_API_BASE_URL: runtimeBase,
+          GROK_MODELS_BASE_URL: runtimeBase,
+          GROK_MODELS_LIST_URL: `${runtimeBase}/models`,
         }
       : {}),
   }

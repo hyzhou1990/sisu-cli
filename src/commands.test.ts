@@ -17,7 +17,7 @@ import {
   statusCommand,
   webLoginCommand,
 } from './commands'
-import { readAuth, readSession, writeAuth } from './store'
+import { readAuth, readSession, writeAuth, writeSession } from './store'
 
 function makeHome(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-cmd-'))
@@ -442,6 +442,12 @@ describe('sisu commands', () => {
     const listed = await listModelsCommand(http)
     expect(listed).toContain('* sisu-lite')
     expect(listed).toContain('sisu-pro')
+    expect(listed).not.toContain('claude')
+    expect(listed).not.toContain('grok-4.6')
+    writeSession({ ...readSession(), last_model: 'claude-opus-4.8' })
+    const listedStale = await listModelsCommand(http)
+    expect(listedStale).toContain('* sisu-lite')
+    expect(listedStale).not.toContain('claude-opus-4.8')
     expect(await setModelCommand('SiSu-Pro', http)).toBe('model sisu-pro')
     expect(readSession().last_model).toBe('sisu-pro')
     await expect(setModelCommand('nope', http)).rejects.toThrow(/unknown model/)
