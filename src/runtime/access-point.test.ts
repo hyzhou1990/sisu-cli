@@ -182,7 +182,8 @@ it('probe 404 does not spawn pager', async () => {
 })
 
 it('direct pager without SISU_ACCESS_POINT exits 2; with flag --help works', () => {
-  const binary = findGrokBuildBinary()
+  const repoBin = path.resolve(__dirname, '..', '..', 'bin', 'xai-grok-pager')
+  const binary = fs.existsSync(repoBin) ? repoBin : findGrokBuildBinary()
   if (!binary) {
     // npm pack / CI may omit the vendored binary — contract covered by host tests above.
     return
@@ -196,10 +197,6 @@ it('direct pager without SISU_ACCESS_POINT exits 2; with flag --help works', () 
     env: deniedEnv,
     timeout: 15_000,
   })
-  if (denied.status !== 2) {
-    // Stock vendor pager is not access-point gated until overlay apply + rebuild.
-    return
-  }
   expect(denied.status).toBe(2)
   expect(denied.stderr).toMatch(/run `sisu`/)
 

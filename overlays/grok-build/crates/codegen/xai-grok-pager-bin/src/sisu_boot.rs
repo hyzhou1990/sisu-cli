@@ -7,7 +7,10 @@ fn sisu_home() -> Option<PathBuf> {
     if let Some(home) = std::env::var_os("SISU_HOME").filter(|value| !value.is_empty()) {
         return Some(PathBuf::from(home));
     }
-    dirs::home_dir().map(|home| home.join(".sisu"))
+    // pager-bin does not depend on `dirs`; HOME is enough (Windows pager is out of scope).
+    std::env::var_os("HOME")
+        .filter(|value| !value.is_empty())
+        .map(|home| PathBuf::from(home).join(".sisu"))
 }
 
 /// Apply SiSu identity before clap/auth. Safe to call more than once.

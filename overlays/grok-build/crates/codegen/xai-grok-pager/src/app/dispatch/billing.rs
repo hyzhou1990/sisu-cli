@@ -51,8 +51,11 @@ pub(crate) fn upsell_url_payg() -> &'static str {
     }
 }
 
-/// Legacy names: gated accessors (were `const` before access-point).
-pub(crate) use self::{upsell_url_payg as UPSELL_URL_PAYG, upsell_url_upgrade as UPSELL_URL_UPGRADE};
+/// Stock callers still take `&'static str`. This overlay ships the SiSu pager,
+/// so the const names are SiSu top-up URLs. Runtime-gated accessors remain
+/// for overlayed billing that still distinguishes access-point vs grok.com.
+pub(crate) const UPSELL_URL_UPGRADE: &str = SISU_TOPUP_URL;
+pub(crate) const UPSELL_URL_PAYG: &str = SISU_TOPUP_URL;
 
 /// Billing mode for credit-limit upsell copy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -177,7 +180,7 @@ pub(super) fn open_credit_limit_upsell(
         agent.scrollback.push_block(RenderBlock::credit_limit_card(
             heading,
             card_action,
-            UPSELL_URL_PAYG(),
+            upsell_url_payg(),
         ));
         return;
     }
@@ -206,13 +209,13 @@ pub(super) fn open_credit_limit_upsell(
                 label: "Upgrade tier".into(),
                 description: upgrade_tier_desc.into(),
                 preview: None,
-                id: Some(UPSELL_URL_UPGRADE().into()),
+                id: Some(upsell_url_upgrade().into()),
             },
             QuestionOption {
                 label: secondary_label.into(),
                 description: secondary_desc.into(),
                 preview: None,
-                id: Some(UPSELL_URL_PAYG().into()),
+                id: Some(upsell_url_payg().into()),
             },
         ],
         multi_select: Some(false),
@@ -318,7 +321,7 @@ fn open_supergrok_upsell(
         auth_method,
     });
 
-    let topup = UPSELL_URL_UPGRADE();
+    let topup = upsell_url_upgrade();
     // Access-point: single SiSu 充值 CTA. Otherwise /supergrok lists all plans.
     let options = if sisu {
         vec![QuestionOption {

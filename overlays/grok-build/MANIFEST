@@ -7,6 +7,7 @@ crates/codegen/xai-grok-shell/src/agent/config_tests.rs
 crates/codegen/xai-grok-shell/src/agent/models.rs
 crates/codegen/xai-grok-shell/src/agent/models/resolution.rs
 crates/codegen/xai-grok-shell/src/agent/models/tests.rs
+crates/codegen/xai-grok-shell/src/agent/mvp_agent/agent_ops.rs
 crates/codegen/xai-grok-shell/src/auth/api_key_probe.rs
 crates/codegen/xai-grok-shell/src/auth/storage.rs
 crates/codegen/xai-grok-shell/src/remote/client.rs
@@ -21,6 +22,7 @@ crates/codegen/xai-grok-pager/src/app/event_loop.rs
 crates/codegen/xai-grok-pager/src/app/effects/mod.rs
 crates/codegen/xai-grok-pager/src/app/app_view.rs
 crates/codegen/xai-grok-pager/src/app/acp_handler/settings.rs
+crates/codegen/xai-grok-pager/src/app/dispatch/mod.rs
 crates/codegen/xai-grok-pager/src/app/dispatch/auth.rs
 crates/codegen/xai-grok-pager/src/app/dispatch/billing.rs
 crates/codegen/xai-grok-pager/src/app/dispatch/tests/auth.rs

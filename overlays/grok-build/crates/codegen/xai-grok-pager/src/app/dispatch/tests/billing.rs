@@ -1,6 +1,7 @@
 //! Tests for credit-limit upsells, paywall gating, and auto-topup.
 
 use super::*;
+use crate::app::dispatch::billing::{upsell_url_payg, upsell_url_upgrade};
 use xai_grok_shell::sampling::error::is_free_usage_exhausted_error;
 
 // ── Credit-limit upsell / max-tier tests ───────────────────────────
@@ -155,9 +156,9 @@ fn upsell_non_max_shows_qa_with_two_options() {
     let q = &agent_qv(&app).questions[0];
     assert_eq!(q.options.len(), 2);
     assert_eq!(q.options[0].label, "Upgrade tier");
-    assert_eq!(q.options[0].id.as_deref(), Some(UPSELL_URL_UPGRADE()));
+    assert_eq!(q.options[0].id.as_deref(), Some(upsell_url_upgrade()));
     assert_eq!(q.options[1].label, "Pay as you go");
-    assert_eq!(q.options[1].id.as_deref(), Some(UPSELL_URL_PAYG()));
+    assert_eq!(q.options[1].id.as_deref(), Some(upsell_url_payg()));
 }
 
 #[test]
@@ -222,8 +223,8 @@ fn access_point_billing_strings_use_sisu_not_supergrok() {
     let _ap = xai_grok_test_support::EnvGuard::set("SISU_ACCESS_POINT", "1");
     assert!(xai_grok_shell::sisu_access_point::active());
 
-    let upgrade = UPSELL_URL_UPGRADE();
-    let payg = UPSELL_URL_PAYG();
+    let upgrade = upsell_url_upgrade();
+    let payg = upsell_url_payg();
     assert!(
         upgrade.contains("sisu.chat"),
         "upgrade URL must be SiSu: {upgrade}"
@@ -499,7 +500,7 @@ fn upsell_max_tier_pushes_scrollback_card_payg_off() {
         blk.action,
         crate::scrollback::blocks::CreditLimitCardAction::EnablePayg
     );
-    assert_eq!(blk.url, UPSELL_URL_PAYG());
+    assert_eq!(blk.url, upsell_url_payg());
 }
 
 #[test]
@@ -518,7 +519,7 @@ fn upsell_max_tier_pushes_scrollback_card_payg_on() {
         blk.action,
         crate::scrollback::blocks::CreditLimitCardAction::IncreasePaygLimit
     );
-    assert_eq!(blk.url, UPSELL_URL_PAYG());
+    assert_eq!(blk.url, upsell_url_payg());
 }
 
 #[test]
@@ -542,7 +543,7 @@ fn upsell_max_tier_scrollback_card_url_is_payg() {
         &mut app,
         CreditLimitUpsellMode::LegacyPayg { enabled: false },
     );
-    assert_eq!(last_credit_limit_block(&app, before).url, UPSELL_URL_PAYG());
+    assert_eq!(last_credit_limit_block(&app, before).url, upsell_url_payg());
 }
 
 #[test]
@@ -1111,17 +1112,17 @@ fn free_usage_upsell_shows_three_options_with_exact_labels() {
         (
             "Upgrade to SuperGrok",
             "For everyday coding and productivity tasks",
-            Some(UPSELL_URL_UPGRADE()),
+            Some(upsell_url_upgrade()),
         ),
         (
             "Upgrade to SuperGrok Plus",
             "Significantly higher usage and rate limits",
-            Some(UPSELL_URL_UPGRADE()),
+            Some(upsell_url_upgrade()),
         ),
         (
             "Upgrade to SuperGrok Heavy",
             "Get the most out of Grok Build. Highest usage limits.",
-            Some(UPSELL_URL_UPGRADE()),
+            Some(upsell_url_upgrade()),
         ),
     ];
     assert_eq!(q.options.len(), expected.len());
@@ -1212,7 +1213,7 @@ fn free_usage_translate_local_submit_maps_options() {
     for idx in [0, 1, 2] {
         qv.selections[0] = QuestionSelection::Single(Some(idx));
         match translate_local_submit_for_test(&qv, kind(), false) {
-            InputOutcome::Action(Action::OpenUrl(url)) => assert_eq!(url, UPSELL_URL_UPGRADE()),
+            InputOutcome::Action(Action::OpenUrl(url)) => assert_eq!(url, upsell_url_upgrade()),
             other => panic!("expected OpenUrl for option {idx}, got {other:?}"),
         }
     }
@@ -1257,11 +1258,11 @@ fn restricted_command_submit_opens_three_option_upsell() {
     assert_eq!(q.question, "Unlock all features with SuperGrok.");
     assert_eq!(q.options.len(), 3);
     assert_eq!(q.options[0].label, "Upgrade to SuperGrok");
-    assert_eq!(q.options[0].id.as_deref(), Some(UPSELL_URL_UPGRADE()));
+    assert_eq!(q.options[0].id.as_deref(), Some(upsell_url_upgrade()));
     assert_eq!(q.options[1].label, "Upgrade to SuperGrok Plus");
-    assert_eq!(q.options[1].id.as_deref(), Some(UPSELL_URL_UPGRADE()));
+    assert_eq!(q.options[1].id.as_deref(), Some(upsell_url_upgrade()));
     assert_eq!(q.options[2].label, "Upgrade to SuperGrok Heavy");
-    assert_eq!(q.options[2].id.as_deref(), Some(UPSELL_URL_UPGRADE()));
+    assert_eq!(q.options[2].id.as_deref(), Some(upsell_url_upgrade()));
 }
 
 /// Aliases of a restricted command hit the same upsell (deny-list
@@ -1369,7 +1370,7 @@ fn open_url_shows_manual_url_when_browser_unavailable() {
 
     let mut app = test_app_with_agent();
     let before = agent_scrollback_len(&app);
-    let url = UPSELL_URL_UPGRADE();
+    let url = upsell_url_upgrade();
     let effects = dispatch(Action::OpenUrl(url.to_string()), &mut app);
     assert!(effects.is_empty());
 
@@ -1405,7 +1406,7 @@ fn open_url_does_not_show_fallback_when_opener_succeeds() {
 
     let mut app = test_app_with_agent();
     let before = agent_scrollback_len(&app);
-    let url = UPSELL_URL_PAYG();
+    let url = upsell_url_payg();
     let _ = dispatch(Action::OpenUrl(url.to_string()), &mut app);
 
     assert_eq!(
@@ -1521,7 +1522,7 @@ fn credit_limit_upsell_submit_shows_url_when_browser_unavailable() {
     else {
         panic!("expected OpenUrl from upsell submit");
     };
-    assert_eq!(url, UPSELL_URL_PAYG());
+    assert_eq!(url, upsell_url_payg());
 
     let before = agent_scrollback_len(&app);
     let _ = dispatch(Action::OpenUrl(url.clone()), &mut app);
