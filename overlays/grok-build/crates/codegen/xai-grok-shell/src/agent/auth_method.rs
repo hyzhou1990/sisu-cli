@@ -417,6 +417,12 @@ pub(crate) fn session_token_auth_gate(
     model_byok: ModelByok,
     endpoint_is_first_party: bool,
 ) -> bool {
+    // Access-point JWT lives on SamplerConfig / SISU_TOKEN. The grok
+    // AuthManager has no session; wiring its bearer resolver strips
+    // Authorization and the runtime returns 403 "Not authenticated".
+    if crate::sisu_access_point::active() {
+        return false;
+    }
     is_session_based_method
         && match model_byok {
             ModelByok::NotByok => true,
@@ -873,6 +879,18 @@ mod tests {
                  uses to decide whether to show the login screen",
             );
         }
+    }
+
+    #[test]
+    #[serial]
+    fn access_point_does_not_wire_grok_session_bearer_resolver() {
+        let _ap = EnvGuard::set("SISU_ACCESS_POINT", "1");
+        assert!(
+            !session_token_auth_gate(true, ModelByok::NotByok, false),
+            "SiSu JWT must stay on SamplerConfig; grok AuthManager is empty"
+        );
+        assert!(!session_token_auth_gate(true, ModelByok::NotByok, true));
+        assert!(!session_token_auth_gate(true, ModelByok::Unknown, true));
     }
 
     /// `XAI_API_KEY` alone (no per-model creds) also triggers
