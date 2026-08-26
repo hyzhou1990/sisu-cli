@@ -1005,7 +1005,16 @@ impl ModelsManager {
     }
 
     /// Build a `SamplingConfig` from the current model + auth state.
-    pub fn sampling_config(&self) -> Result<SamplingConfig, String> {
+    /// Access-point empty catalog fail-closes via `exit_on_config_error`.
+    pub fn sampling_config(&self) -> SamplingConfig {
+        match self.sampling_config_result() {
+            Ok(cfg) => cfg,
+            Err(e) => crate::agent::init::exit_on_config_error(e),
+        }
+    }
+
+    /// Same as [`Self::sampling_config`], but empty access-point catalog is `Err`.
+    pub fn sampling_config_result(&self) -> Result<SamplingConfig, String> {
         let config = self.inner.cfg.read().clone();
         let auth_manager = self.inner.auth_manager.as_ref();
         let current_model_id = self.current_model_id();

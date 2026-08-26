@@ -1220,7 +1220,7 @@ fn sampling_config_access_point_empty_catalog_does_not_yield_grok_46() {
     let mgr = test_manager();
     assert!(mgr.models().is_empty(), "fixture must be an empty catalog");
     let err = mgr
-        .sampling_config()
+        .sampling_config_result()
         .expect_err("access-point empty catalog must error");
     assert!(
         !err.contains("grok-4.6"),
