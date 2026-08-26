@@ -2377,6 +2377,21 @@ mod tests {
         assert!(help.find("Options:\n").unwrap() < help.find("Commands:\n").unwrap());
     }
     #[test]
+    fn parse_cli_bin_name_defaults_to_sisu_for_pager_binary() {
+        use clap::CommandFactory;
+        assert_eq!(PagerArgs::clap_bin_name(Some("xai-grok-pager")), "sisu");
+        assert_eq!(PagerArgs::clap_bin_name(None), "sisu");
+        assert_eq!(PagerArgs::clap_bin_name(Some("sisu")), "sisu");
+        let mut cmd = PagerArgs::command();
+        cmd = cmd.bin_name(PagerArgs::clap_bin_name(Some("xai-grok-pager")));
+        let help = cmd.render_long_help().to_string();
+        assert!(
+            help.contains("Usage: sisu"),
+            "pager binary must not print Usage: grok: {help}"
+        );
+        assert!(!help.contains("Usage: grok"));
+    }
+    #[test]
     fn cli_completions_parses() {
         use clap_complete::Shell;
         let args = try_parse_pager(&["grok-pager", "completions", "zsh"]).unwrap();

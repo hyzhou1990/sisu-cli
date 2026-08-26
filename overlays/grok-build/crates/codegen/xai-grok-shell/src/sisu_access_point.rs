@@ -53,7 +53,10 @@ pub fn runtime_contract_error() -> Option<String> {
     ];
     for name in names {
         match env_nonempty(name) {
-            None if name == "GROK_XAI_API_BASE_URL" || name == "GROK_MODELS_LIST_URL" => {
+            None if name == "GROK_XAI_API_BASE_URL"
+                || name == "GROK_MODELS_LIST_URL"
+                || name == "GROK_CLI_CHAT_PROXY_BASE_URL" =>
+            {
                 return Some(format!("sisu: refusing to start — {name} missing"));
             }
             None => {}
@@ -233,6 +236,32 @@ mod tests {
         let _tok = EnvGuard::unset("SISU_TOKEN");
         let _xai = EnvGuard::unset("XAI_API_KEY");
         assert_eq!(missing_token_exit_code(), Some(10));
+    }
+
+    #[test]
+    #[serial]
+    fn runtime_contract_requires_sisu_cli_chat_proxy() {
+        let _ap = EnvGuard::set("SISU_ACCESS_POINT", "1");
+        let sisu = "https://www.sisu.chat/api/runtime/v1";
+        let _xai = EnvGuard::set("GROK_XAI_API_BASE_URL", sisu);
+        let _list = EnvGuard::set("GROK_MODELS_LIST_URL", format!("{sisu}/models"));
+        let _models = EnvGuard::unset("GROK_MODELS_BASE_URL");
+        let _xai2 = EnvGuard::unset("XAI_API_BASE_URL");
+        let _proxy = EnvGuard::unset("GROK_CLI_CHAT_PROXY_BASE_URL");
+        let err = runtime_contract_error().expect("proxy URL required");
+        assert!(err.contains("GROK_CLI_CHAT_PROXY_BASE_URL"));
+        assert!(err.contains("missing"));
+
+        let _grok = EnvGuard::set(
+            "GROK_CLI_CHAT_PROXY_BASE_URL",
+            "https://cli-chat-proxy.grok.com/v1",
+        );
+        let err = runtime_contract_error().expect("grok proxy refused");
+        assert!(err.contains("GROK_CLI_CHAT_PROXY_BASE_URL"));
+        assert!(err.contains("not a SiSu runtime"));
+
+        let _ok = EnvGuard::set("GROK_CLI_CHAT_PROXY_BASE_URL", sisu);
+        assert_eq!(runtime_contract_error(), None);
     }
 
     #[test]

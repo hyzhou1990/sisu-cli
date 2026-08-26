@@ -1103,6 +1103,52 @@ async fn fetch_bundle_returns_archive_on_success() {
     server.abort();
 }
 #[tokio::test(flavor = "current_thread")]
+#[serial_test::serial]
+async fn access_point_fetch_bundle_archive_sends_sisu_token_not_grok_authstore() {
+    use xai_grok_test_support::EnvGuard;
+    let _ap = EnvGuard::set("SISU_ACCESS_POINT", "1");
+    let _tok = EnvGuard::set("SISU_TOKEN", "sisu-jwt-mock");
+    let grok_key = test_auth().key.clone();
+    let seen = Arc::new(Mutex::new(Vec::<Option<String>>::new()));
+    let seen_clone = seen.clone();
+    let archive_bytes = b"fake-tar-gz-bytes".to_vec();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+    let app = Router::new().route(
+        "/v1/bundle/archive",
+        get(move |headers: HeaderMap| {
+            let seen = seen_clone.clone();
+            let archive_bytes = archive_bytes.clone();
+            async move {
+                seen.lock()
+                    .unwrap()
+                    .push(header_str(&headers, "authorization"));
+                (StatusCode::OK, archive_bytes)
+            }
+        }),
+    );
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let am = test_auth_manager();
+    let result = fetch_bundle(&format!("{base}/v1"), Some(&am), None, None)
+        .await
+        .unwrap();
+    server.abort();
+    match result {
+        FetchedBundle::Archive(bytes) => assert_eq!(bytes, b"fake-tar-gz-bytes"),
+        FetchedBundle::Legacy(_) => panic!("expected Archive variant"),
+    }
+    let headers = seen.lock().unwrap();
+    assert_eq!(
+        headers.last().and_then(|h| h.as_deref()),
+        Some("Bearer sisu-jwt-mock"),
+        "archive must send SISU_TOKEN, not grok AuthStore: {headers:?}"
+    );
+    assert!(
+        !headers.iter().flatten().any(|h| h.contains(&grok_key)),
+        "must not send leftover grok AuthStore token"
+    );
+}
+#[tokio::test(flavor = "current_thread")]
 async fn fetch_bundle_falls_back_on_archive_404() {
     let (proxy_base_url, server) = start_dual_bundle_server(DualBundleServerState {
         archive_status: StatusCode::NOT_FOUND,

@@ -854,17 +854,25 @@ impl PagerArgs {
             None
         }
     }
+    /// argv0 for clap usage. Overlay pager is `xai-grok-pager`; default `grok`
+    /// made `--help` print `Usage: grok` despite `name = "sisu"`.
+    pub(crate) fn clap_bin_name(file_name: Option<&str>) -> &'static str {
+        match file_name {
+            Some("grok") => "grok",
+            Some("agent") => "agent",
+            Some("sisu") => "sisu",
+            _ => "sisu",
+        }
+    }
     /// Parse CLI arguments without applying side effects.
     pub fn parse_cli() -> Self {
-        let bin_name = std::env::args()
-            .next()
+        let argv0 = std::env::args().next();
+        let file_name = argv0
             .as_deref()
             .map(std::path::Path::new)
             .and_then(|p| p.file_name())
-            .and_then(|n| n.to_str())
-            .filter(|n| *n == "grok" || *n == "agent")
-            .unwrap_or("grok")
-            .to_owned();
+            .and_then(|n| n.to_str());
+        let bin_name = Self::clap_bin_name(file_name).to_owned();
         Self::parse_from(std::iter::once(bin_name).chain(std::env::args().skip(1)))
     }
     /// Apply launch-directory path anchoring and `--cwd` after early commands

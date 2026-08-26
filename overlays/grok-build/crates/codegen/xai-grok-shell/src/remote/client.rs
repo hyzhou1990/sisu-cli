@@ -189,7 +189,10 @@ async fn fetch_bundle_inner(
 ) -> Result<FetchedBundle, BackendError> {
     let archive_url = format!("{}/bundle/archive", cli_chat_proxy_base_url);
     let raw_client = crate::http::shared_client();
-    let client: reqwest_middleware::ClientWithMiddleware = if let Some(am) = auth_manager {
+    let access_point = crate::sisu_access_point::active();
+    let client: reqwest_middleware::ClientWithMiddleware = if access_point {
+        reqwest_middleware::ClientBuilder::new(raw_client).build()
+    } else if let Some(am) = auth_manager {
         let provider: std::sync::Arc<dyn xai_grok_auth::AuthCredentialProvider> =
             std::sync::Arc::new(
                 crate::auth::credential_provider::ShellAuthCredentialProvider::new(
@@ -210,7 +213,13 @@ async fn fetch_bundle_inner(
             crate::http::CLIENT_MODE_HEADER,
             crate::http::process_client_mode(),
         );
-    if deployment_key.is_none()
+    if access_point {
+        if !crate::sisu_access_point::is_grok_or_xai_url(&archive_url) {
+            if let Some(authz) = crate::sisu_access_point::access_point_authorization() {
+                request = request.header("Authorization", authz);
+            }
+        }
+    } else if deployment_key.is_none()
         && let Some(am) = auth_manager
         && let Some(auth) = am.current()
     {
