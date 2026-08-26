@@ -642,7 +642,7 @@ fn default_model_honors_allowlist_when_no_default_set() {
             "#,
     );
     let catalog = resolve_model_catalog(&cfg, None);
-    let (_key, entry, _src) = resolve_default_model(&cfg, &catalog, true).unwrap();
+    let (_key, entry, _src) = resolve_default_model(&cfg, &catalog, true).expect("default model");
     assert!(
         entry.info.user_selectable,
         "picked non-selectable {}",
@@ -994,6 +994,11 @@ fn config_menu_only_model_derives_support_and_default() {
     assert_eq!(mgr.model_reasoning_efforts("menu-only").len(), 2);
     assert!(!mgr.model_supports_reasoning_effort("plain"));
     assert_eq!(mgr.model_default_reasoning_effort("plain"), None);
+
+    mgr.set_current_model_id(acp::ModelId::new("plain"));
+    assert_eq!(mgr.current_model_id().0.as_ref(), "plain");
+    assert_eq!(mgr.model_reasoning_efforts("menu-only").len(), 2);
+    assert!(mgr.model_reasoning_efforts("plain").is_empty());
 }
 
 #[test]
@@ -1769,7 +1774,7 @@ fn unavailable_campaign_default_falls_back_to_config_default() {
     cfg.models.default = Some("missing-model".to_string());
     cfg.models.default_is_campaign_driven = true;
     cfg.models.pre_campaign_default = Some("real-model".to_string());
-    let (key, _, _) = resolve_default_model(&cfg, &catalog, true).unwrap();
+    let (key, _, _) = resolve_default_model(&cfg, &catalog, true).expect("default model");
     assert_eq!(
         key, "real-model",
         "must fall back to the pre-campaign default"
@@ -1779,13 +1784,13 @@ fn unavailable_campaign_default_falls_back_to_config_default() {
     cfg2.models.default = Some("missing-model".to_string());
     cfg2.models.default_is_campaign_driven = true;
     cfg2.models.pre_campaign_default = Some("also-missing".to_string());
-    let (key2, _, _) = resolve_default_model(&cfg2, &catalog, true).unwrap();
+    let (key2, _, _) = resolve_default_model(&cfg2, &catalog, true).expect("default model");
     assert_eq!(&key2, catalog.keys().next().unwrap());
 
     let mut cfg3 = config::Config::default();
     cfg3.models.default = Some("missing-model".to_string());
     cfg3.models.pre_campaign_default = Some("real-model".to_string());
-    let (key3, _, _) = resolve_default_model(&cfg3, &catalog, true).unwrap();
+    let (key3, _, _) = resolve_default_model(&cfg3, &catalog, true).expect("default model");
     assert_eq!(
         &key3,
         catalog.keys().next().unwrap(),
@@ -1799,7 +1804,7 @@ fn unavailable_campaign_default_falls_back_to_config_default() {
     cfg4.models.default = Some("campaign-model".to_string());
     cfg4.models.default_is_campaign_driven = true;
     cfg4.models.pre_campaign_default = Some("real-model".to_string());
-    let (key4, _, _) = resolve_default_model(&cfg4, &catalog, true).unwrap();
+    let (key4, _, _) = resolve_default_model(&cfg4, &catalog, true).expect("default model");
     assert_eq!(
         &key4,
         catalog.keys().next().unwrap(),
@@ -1992,14 +1997,14 @@ fn default_model_skips_oauth_only_for_api_key_users() {
     };
     catalog.insert("public-model".to_string(), public);
 
-    let (key, _, _) = resolve_default_model(&cfg, &catalog, false).unwrap();
+    let (key, _, _) = resolve_default_model(&cfg, &catalog, false).expect("default model");
     assert_ne!(
         key, "oauth-only",
         "API-key default must not be an OAuth-only model"
     );
     assert_eq!(key, "public-model");
 
-    let (key, _, _) = resolve_default_model(&cfg, &catalog, true).unwrap();
+    let (key, _, _) = resolve_default_model(&cfg, &catalog, true).expect("default model");
     assert!(
         key == "oauth-only" || key == "public-model",
         "OAuth user should be able to use either model as default"
@@ -2056,6 +2061,7 @@ fn make_entry_config_with_id(
         agent_type: config::default_agent_type(),
         inference_idle_timeout_secs: None,
         max_retries: None,
+        subagent_rate_limit_max_attempts: None,
         hidden: false,
         supported_in_api: true,
         auth_scheme: None,
@@ -2132,7 +2138,7 @@ fn resolve_default_model_prefers_id_over_model_slug() {
     let mut cfg = config::Config::default();
     cfg.models.default = Some("grok-build".to_string());
 
-    let (key, _, _) = resolve_default_model(&cfg, &catalog, true).unwrap();
+    let (key, _, _) = resolve_default_model(&cfg, &catalog, true).expect("default model");
     assert_eq!(key, "grok-build", "must match id, not first slug hit");
 }
 
