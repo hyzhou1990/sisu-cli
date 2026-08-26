@@ -200,6 +200,50 @@ async fn settings_fetch_maps_status_to_outcome() {
         assert_eq!(got, expected, "status {status}, body {body:?}");
     }
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial_test::serial]
+async fn access_point_settings_sends_sisu_token_not_grok_authstore() {
+    use xai_grok_test_support::EnvGuard;
+    let _ap = EnvGuard::set("SISU_ACCESS_POINT", "1");
+    let _tok = EnvGuard::set("SISU_TOKEN", "sisu-jwt");
+    let grok_key = GrokAuth::test_default().key.clone();
+    let seen = Arc::new(Mutex::new(Vec::<Option<String>>::new()));
+    let seen_clone = seen.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+    let app = Router::new().route(
+        "/settings",
+        get(move |headers: HeaderMap| {
+            let seen = seen_clone.clone();
+            async move {
+                seen.lock()
+                    .unwrap()
+                    .push(header_str(&headers, "authorization"));
+                (StatusCode::OK, "{}")
+            }
+        }),
+    );
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let auth = GrokAuth::test_default();
+    let outcome = tokio::task::spawn_blocking(move || {
+        fetch_settings_blocking_with_attempts(&base, &auth, None, 1)
+    })
+    .await
+    .unwrap();
+    server.abort();
+    assert!(matches!(outcome, SettingsFetch::Fetched(_)));
+    let headers = seen.lock().unwrap();
+    assert_eq!(
+        headers.last().and_then(|h| h.as_deref()),
+        Some("Bearer sisu-jwt"),
+        "settings must send SISU_TOKEN, not grok AuthStore: {headers:?}"
+    );
+    assert!(
+        !headers.iter().flatten().any(|h| h.contains(&grok_key)),
+        "must not send leftover grok AuthStore token"
+    );
+}
 #[derive(Debug, Default, Clone)]
 struct SeenHeaders {
     authorization: Option<String>,

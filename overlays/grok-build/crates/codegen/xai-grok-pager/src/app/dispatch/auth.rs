@@ -226,6 +226,24 @@ pub(super) fn strip_trailing_auth_error_blocks(agent: &mut AgentView) {
     }
 }
 
+/// Access-point billed 401: quit so host `sisu login` runs. Never grok OAuth.
+pub(crate) fn intercept_access_point_billed_auth_failure(
+    app: &mut AppView,
+    http_status: Option<u16>,
+    err: Option<&str>,
+) -> Option<Vec<Effect>> {
+    if !xai_grok_shell::sisu_access_point::active() {
+        return None;
+    }
+    let expired = http_status == Some(401)
+        || http_status.is_some_and(xai_grok_shell::sisu_access_point::billed_turn_is_host_login)
+        || err.is_some_and(|e| e.contains("(401)"));
+    if !expired {
+        return None;
+    }
+    Some(dispatch_login(app))
+}
+
 /// Start an interactive login flow. Triggered by pressing 'l' on the
 /// welcome screen or by the `/login` slash command.
 ///

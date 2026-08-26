@@ -2811,6 +2811,14 @@ mod tests {
             !full.contains("Logged in with API key"),
             "access-point badge must never say API key: {full:?}"
         );
+        assert!(
+            !full.contains("grok-4.6"),
+            "access-point badge must not show grok-4.6: {full:?}"
+        );
+        assert!(
+            full.contains("SiSu"),
+            "access-point badge must say SiSu: {full:?}"
+        );
     }
 
     #[test]

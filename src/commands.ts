@@ -28,6 +28,16 @@ import {
   writeAuth,
   writeSession,
 } from './store'
+import { SISU_CLIENT_VERSION } from './client'
+import { installedPagerStamp } from './runtime/launch'
+
+/** Host + pager stamp for `sisu status`. Shipped reporter — tests drive this. */
+export function formatCliReleaseStatus(
+  version = SISU_CLIENT_VERSION,
+  pagerStamp = installedPagerStamp(),
+): string {
+  return [`cli ${version}`, `pager ${pagerStamp || 'none'}`].join('\n')
+}
 
 export interface LoginInput {
   email?: string
@@ -240,6 +250,7 @@ export async function fetchBalance(http: HttpClient = defaultHttp): Promise<any>
 export async function statusCommand(http?: HttpClient): Promise<string> {
   const status = describeStatus()
   const lines = [
+    ...formatCliReleaseStatus().split('\n'),
     `home ${status.home}`,
     status.logged_in ? `user ${status.email}${status.plan_code ? ` (${status.plan_code})` : ''}` : 'user logged out',
     `api  ${status.api_base}`,

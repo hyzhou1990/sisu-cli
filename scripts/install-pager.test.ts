@@ -3,10 +3,17 @@ import os from 'os'
 import path from 'path'
 import zlib from 'zlib'
 // The installer is a shipped CommonJS file (npm postinstall). Drive that file.
-const { SUPPORTED, decodePayload, installPager, releaseAssetUrl, writeBinary } = require('./install-pager.js') as {
+const { SUPPORTED, decodePayload, installPager, pagerUnavailableReason, releaseAssetUrl, writeBinary } = require('./install-pager.js') as {
   SUPPORTED: Set<string>
   decodePayload: (buf: Buffer) => Buffer
-  installPager: (options?: Record<string, unknown>) => Promise<{ ok: boolean; dest?: string; skipped?: boolean }>
+  installPager: (options?: Record<string, unknown>) => Promise<{
+    ok: boolean
+    dest?: string
+    skipped?: boolean
+    reason?: string
+    url?: string
+  }>
+  pagerUnavailableReason: (key: string, version?: string) => string
   releaseAssetUrl: (version: string, key: string) => string
   writeBinary: (bytes: Buffer, dest: string) => void
 }
@@ -27,6 +34,41 @@ it('lists darwin-arm64 plus linux and darwin-x64 pager platforms', () => {
     expect(releaseAssetUrl('0.3.0', key)).toBe(
       `https://github.com/hyzhou1990/sisu-cli/releases/download/v0.3.0/xai-grok-pager-${key}.br`,
     )
+  }
+})
+
+it('tells unsupported platforms the Node TUI is the fallback', async () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as { version: string }
+  expect(releaseAssetUrl(pkg.version, 'darwin-arm64')).toBe(
+    `https://github.com/hyzhou1990/sisu-cli/releases/download/v${pkg.version}/xai-grok-pager-darwin-arm64.br`,
+  )
+  expect(pagerUnavailableReason('win32-x64', pkg.version)).toMatch(/Node TUI/)
+  expect(pagerUnavailableReason('win32-x64', pkg.version)).toContain(pkg.version)
+  const result = await installPager({ platform: 'win32-x64', version: pkg.version })
+  expect(result.ok).toBe(false)
+  expect(result.skipped).toBe(true)
+  expect(result.reason).toBe(pagerUnavailableReason('win32-x64', pkg.version))
+})
+
+it('treats a missing release asset as Node TUI fallback', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-pager-404-'))
+  const previous = process.env.SISU_HOME
+  process.env.SISU_HOME = home
+  try {
+    const result = await installPager({
+      platform: 'darwin-x64',
+      version: '0.0.0-missing',
+      dest: path.join(home, 'bin', 'xai-grok-pager'),
+      force: true,
+    })
+    expect(result.ok).toBe(false)
+    expect(result.skipped).toBe(true)
+    expect(result.reason).toBe(pagerUnavailableReason('darwin-x64', '0.0.0-missing'))
+    expect(result.url).toContain('v0.0.0-missing/xai-grok-pager-darwin-x64.br')
+  } finally {
+    if (previous === undefined) delete process.env.SISU_HOME
+    else process.env.SISU_HOME = previous
+    fs.rmSync(home, { recursive: true, force: true })
   }
 })
 

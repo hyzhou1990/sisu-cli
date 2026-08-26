@@ -305,6 +305,22 @@ fn login_from_welcome_does_not_stash_return_view() {
 
 #[test]
 #[serial_test::serial]
+fn access_point_401_prompt_quits_for_host_sisu_login() {
+    let _ap = xai_grok_test_support::EnvGuard::set("SISU_ACCESS_POINT", "1");
+    let mut app = test_app();
+    let effects = intercept_access_point_billed_auth_failure(
+        &mut app,
+        Some(401),
+        Some("Unauthorized (401) — Not authenticated"),
+    )
+    .expect("401 must intercept");
+    assert!(app.quit_for_sisu_login);
+    assert!(effects.iter().any(|e| matches!(e, Effect::Quit)));
+    assert!(!effects.iter().any(|e| matches!(e, Effect::Authenticate { .. })));
+}
+
+#[test]
+#[serial_test::serial]
 fn access_point_login_quits_for_host_sisu_login() {
     let _ap = xai_grok_test_support::EnvGuard::set("SISU_ACCESS_POINT", "1");
     let mut app = test_app();

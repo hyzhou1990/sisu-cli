@@ -138,6 +138,17 @@ pub(super) fn open_credit_limit_upsell(
         xai_grok_telemetry::events::CreditLimitChoice,
         bool,
     ) = match mode {
+        CreditLimitUpsellMode::UnifiedCredits
+            if xai_grok_shell::sisu_access_point::active() =>
+        (
+            "SiSu 配额已用尽。",
+            "在 sisu.chat 充值后继续使用",
+            "SiSu 充值",
+            "打开 https://www.sisu.chat 充值配额",
+            CreditLimitCardAction::PurchaseCredits,
+            xai_grok_telemetry::events::CreditLimitChoice::PurchaseCredits,
+            false,
+        ),
         CreditLimitUpsellMode::UnifiedCredits => (
             "You hit your weekly limit.",
             "Upgrade to a higher tier for more usage",

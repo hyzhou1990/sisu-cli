@@ -3,6 +3,7 @@ import os from 'os'
 import path from 'path'
 import {
   execCommand,
+  formatCliReleaseStatus,
   formatQuota,
   listConversationsCommand,
   listLocalCommand,
@@ -17,6 +18,7 @@ import {
   statusCommand,
   webLoginCommand,
 } from './commands'
+import { SISU_CLIENT_VERSION } from './client'
 import { readAuth, readSession, writeAuth, writeSession } from './store'
 
 function makeHome(): string {
@@ -309,6 +311,11 @@ describe('sisu commands', () => {
     fs.rmSync(home, { recursive: true, force: true })
   })
 
+  it('formatCliReleaseStatus reports package version and pager stamp', () => {
+    expect(formatCliReleaseStatus('0.3.3', '0.3.3')).toBe('cli 0.3.3\npager 0.3.3')
+    expect(formatCliReleaseStatus('0.3.3', '')).toBe('cli 0.3.3\npager none')
+  })
+
   it('shows live quota after login', async () => {
     const home = makeHome()
     process.env.SISU_HOME = home
@@ -332,6 +339,8 @@ describe('sisu commands', () => {
       text: async () => '',
     })
     const text = await statusCommand(http)
+    expect(text).toContain(`cli ${SISU_CLIENT_VERSION}`)
+    expect(text).toMatch(/^pager /m)
     expect(text).toContain('quota 12000 pts')
     expect(text).toContain('wallet 3000')
     expect(http).toHaveBeenCalledWith(

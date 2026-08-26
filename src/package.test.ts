@@ -14,6 +14,15 @@ const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
   license?: string
 }
 
+it('README describes the runtime catalog and pager-only update', () => {
+  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8')
+  expect(readme).toMatch(/\/api\/runtime\/v1\/models/)
+  expect(readme).toMatch(/sisu update/)
+  expect(readme).toMatch(/stamped/)
+  expect(readme).not.toMatch(/\/api\/chat\/models/)
+  expect(readme).not.toMatch(/Grok Build TUI/)
+})
+
 it('is a public sisu package with a sisu bin', () => {
   expect(pkg.name).toBe('@stevezhou/sisu')
   expect(pkg.private).toBeUndefined()

@@ -190,4 +190,8 @@ it('runCli update invokes pager install with force', async () => {
 
 it('help lists sisu update', () => {
   expect(helpText()).toMatch(/sisu update/)
+  expect(helpText()).toMatch(/stamped local pager/)
+  expect(helpText()).toMatch(/\/api\/runtime\/v1\/models/)
+  expect(helpText()).not.toMatch(/\/api\/chat\/models/)
+  expect(helpText()).not.toMatch(/grok login|grok OAuth|auth\.x\.ai/i)
 })

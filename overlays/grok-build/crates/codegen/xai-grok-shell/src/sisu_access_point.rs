@@ -85,6 +85,51 @@ pub fn sisu_token() -> Option<String> {
     })
 }
 
+/// grok.com / api.x.ai / auth.x.ai — access-point must not send leftover grok tokens there.
+pub fn is_grok_or_xai_url(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    lower.contains("grok.com") || lower.contains("api.x.ai") || lower.contains("auth.x.ai")
+}
+
+/// `Authorization` value for access-point HTTP. Never a grok AuthStore key.
+pub fn access_point_authorization() -> Option<String> {
+    if !active() {
+        return None;
+    }
+    sisu_token().map(|token| format!("Bearer {token}"))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BilledTurnCopy {
+    pub headline: &'static str,
+    pub action: &'static str,
+    pub why: &'static str,
+}
+
+/// User-facing billed-turn copy. `None` when not access-point or not 401/402.
+pub fn billed_turn_copy(status: u16) -> Option<BilledTurnCopy> {
+    if !active() {
+        return None;
+    }
+    match status {
+        401 => Some(BilledTurnCopy {
+            headline: "Sign in required",
+            action: "Run `sisu login`.",
+            why: "Your SiSu session expired.",
+        }),
+        402 => Some(BilledTurnCopy {
+            headline: "Quota exhausted",
+            action: "Top up at https://www.sisu.chat",
+            why: "This account has no remaining SiSu quota.",
+        }),
+        _ => None,
+    }
+}
+
+pub fn billed_turn_is_host_login(status: u16) -> bool {
+    active() && status == 401
+}
+
 pub fn client_version() -> String {
     std::env::var("SISU_CLIENT_VERSION")
         .ok()
@@ -188,6 +233,47 @@ mod tests {
         let _tok = EnvGuard::unset("SISU_TOKEN");
         let _xai = EnvGuard::unset("XAI_API_KEY");
         assert_eq!(missing_token_exit_code(), Some(10));
+    }
+
+    #[test]
+    #[serial]
+    fn access_point_authorization_is_sisu_token_not_grok_store() {
+        let _ap = EnvGuard::set("SISU_ACCESS_POINT", "1");
+        let _tok = EnvGuard::set("SISU_TOKEN", "sisu-jwt");
+        let _xai = EnvGuard::unset("XAI_API_KEY");
+        assert_eq!(
+            access_point_authorization().as_deref(),
+            Some("Bearer sisu-jwt")
+        );
+        assert!(is_grok_or_xai_url("https://cli-chat-proxy.grok.com/v1/settings"));
+        assert!(is_grok_or_xai_url("https://api.x.ai/v1"));
+        assert!(!is_grok_or_xai_url("https://www.sisu.chat/api/runtime/v1/settings"));
+    }
+
+    #[test]
+    #[serial]
+    fn billed_turn_401_is_sisu_login_not_request_denied() {
+        let _ap = EnvGuard::set("SISU_ACCESS_POINT", "1");
+        let copy = billed_turn_copy(401).expect("401");
+        assert_eq!(copy.headline, "Sign in required");
+        assert!(copy.action.contains("sisu login"));
+        assert!(!copy.why.to_ascii_lowercase().contains("not authenticated"));
+        assert!(billed_turn_is_host_login(401));
+        assert_eq!(HOST_LOGIN_EXIT_CODE, 10);
+    }
+
+    #[test]
+    #[serial]
+    fn billed_turn_402_is_sisu_quota_not_supergrok() {
+        let _ap = EnvGuard::set("SISU_ACCESS_POINT", "1");
+        let copy = billed_turn_copy(402).expect("402");
+        assert_eq!(copy.headline, "Quota exhausted");
+        assert!(copy.action.contains("https://www.sisu.chat"));
+        assert!(!copy.action.to_ascii_lowercase().contains("grok.com"));
+        assert!(!copy.why.to_ascii_lowercase().contains("supergrok"));
+        let _off = EnvGuard::unset("SISU_ACCESS_POINT");
+        assert!(billed_turn_copy(401).is_none());
+        assert!(billed_turn_copy(402).is_none());
     }
 
     #[test]

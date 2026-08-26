@@ -52,7 +52,7 @@ Usage:
   sisu login --token <jwt> [--api <url>]
   sisu logout
   sisu status
-  sisu update                 reinstall the stamped local pager
+  sisu update                 reinstall the stamped local pager for this CLI version
   sisu open <dir> --project <project-id>
   sisu ls [--project <project-id>]
   sisu exec "<prompt>" [--project <id>] [--model <name>] [--new] [--stub]
@@ -67,6 +67,7 @@ Usage:
   sisu help
 
 Auth and workspaces live in $SISU_HOME (default ~/.sisu), shared with Desktop.
+Models come from GET /api/runtime/v1/models (SiSu-Lite / Pro / Ultra).
 `
 }
 

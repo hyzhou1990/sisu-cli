@@ -147,6 +147,20 @@ fn is_max_tier_rejects_partial_matches() {
 }
 
 #[test]
+#[serial_test::serial]
+fn access_point_unified_upsell_is_sisu_quota_not_grok() {
+    let _ap = xai_grok_test_support::EnvGuard::set("SISU_ACCESS_POINT", "1");
+    let mut app = test_app_with_agent();
+    open_upsell_qa(&mut app, CreditLimitUpsellMode::UnifiedCredits);
+    let q = &agent_qv(&app).questions[0];
+    assert!(q.question.contains("SiSu"));
+    assert!(!q.question.to_ascii_lowercase().contains("grok"));
+    assert_eq!(q.options[0].id.as_deref(), Some(upsell_url_upgrade()));
+    assert!(upsell_url_upgrade().contains("sisu.chat"));
+    assert!(!upsell_url_upgrade().contains("grok.com"));
+}
+
+#[test]
 fn upsell_non_max_shows_qa_with_two_options() {
     let mut app = test_app_with_agent();
     open_upsell_qa(

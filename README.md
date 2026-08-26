@@ -2,7 +2,7 @@
 
 Official publish channel for the SiSu CLI npm package.
 
-One login. Cloud quota. Local runtime. Auth lives in `~/.sisu`, shared with SiSu Desktop. The CLI is a grok-build-derived local coding agent (read / edit / search / shell + the grok-build extension surface). SiSu cloud plays the Claude/Grok role: device login, model list, billed completions (`POST /api/runtime/complete`). Sessions are local under `~/.sisu/sessions`.
+One login. Cloud quota. Local runtime. Auth lives in `~/.sisu`, shared with SiSu Desktop. SiSu cloud is device login, the runtime catalog (`GET /api/runtime/v1/models`), and billed completions (`POST /api/runtime/v1/chat/completions`). Workspace tools stay on the machine. Sessions are local under `~/.sisu/sessions`.
 
 ## Install
 
@@ -13,9 +13,11 @@ sisu login
 sisu
 ```
 
-`npm install -g` is the same shape as `@xai-official/grok`: a small JS package. On macOS Apple Silicon the postinstall pulls the prebuilt Grok Build TUI into `~/.sisu/bin`. Other platforms keep the Node TUI until those binaries are published.
+`npm install -g` is a small JS package. postinstall fetches the stamped SiSu TUI pager for **this package version** into `~/.sisu/bin` when a prebuilt exists (`darwin-arm64`, `linux-x64`, `linux-arm64`, `darwin-x64`). Platforms without a binary, or a missing GitHub Release asset, keep the Node TUI.
 
 Requires Node.js 20 or newer. `npx sisu` works without a global install.
+
+`sisu update` reinstalls that stamped pager for the installed CLI version. It is not a grok-style background auto-updater.
 
 ## Login
 
@@ -32,7 +34,9 @@ Default API is `https://www.sisu.chat`. Override with `--api` or `SISU_API_BASE`
 ## Commands
 
 ```
-sisu                 interactive TUI (local runtime; Grok Build if the pager binary is present)
+sisu                 interactive TUI (SiSu pager when stamped; otherwise Node TUI)
+sisu update          reinstall the stamped pager for this CLI version
+sisu models          list GET /api/runtime/v1/models (SiSu-Lite / Pro / Ultra)
 sisu open <dir> --project <id>
 sisu exec "<prompt>"
 sisu -p "<prompt>"

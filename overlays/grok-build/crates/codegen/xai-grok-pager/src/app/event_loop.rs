@@ -44,6 +44,23 @@ impl TimedInputEvent {
     }
 }
 
+fn dispatch_task_complete(app: &mut AppView, result: TaskResult) -> Vec<Effect> {
+    if let TaskResult::PromptResponse {
+        http_status,
+        result: outcome,
+        ..
+    } = &result
+    {
+        let err = outcome.as_ref().err().map(|s| s.as_str());
+        if let Some(effects) =
+            dispatch::intercept_access_point_billed_auth_failure(app, *http_status, err)
+        {
+            return effects;
+        }
+    }
+    dispatch::dispatch(Action::TaskComplete(result), app)
+}
+
 /// Whether an event carries genuine text-typing intent that belongs in the
 /// composer, as opposed to terminal noise (mouse/focus/resize reports,
 /// cursor/device-attribute replies) or control keys.
@@ -2078,7 +2095,7 @@ pub(crate) async fn run(
         );
         let mut quit_after_deferred_load = false;
         for result in ready_loads {
-            let effs = dispatch::dispatch(Action::TaskComplete(result), &mut app);
+            let effs = dispatch_task_complete(&mut app, result);
             if process_effects(effs, &mut tasks, &mut app, &progress_tx) {
                 quit_after_deferred_load = true;
                 break;
@@ -2432,7 +2449,7 @@ pub(crate) async fn run(
                         ) else {
                             continue;
                         };
-                        let effs = dispatch::dispatch(Action::TaskComplete(result), &mut app);
+                        let effs = dispatch_task_complete(&mut app, result);
                         if process_effects(effs, &mut tasks, &mut app, &progress_tx) {
                             break;
                         }
@@ -2464,7 +2481,7 @@ pub(crate) async fn run(
                     agent_id: msg.agent_id,
                     message: msg.message,
                 };
-                let effs = dispatch::dispatch(Action::TaskComplete(result), &mut app);
+                let effs = dispatch_task_complete(&mut app, result);
                 if process_effects(effs, &mut tasks, &mut app, &progress_tx) {
                     break;
                 }

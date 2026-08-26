@@ -18,10 +18,13 @@ crates/codegen/xai-grok-pager-bin/src/sisu_boot.rs
 crates/codegen/xai-grok-pager-bin/src/main.rs
 crates/codegen/xai-grok-pager/src/app/cli.rs
 crates/codegen/xai-grok-pager/src/app/mod.rs
+crates/codegen/xai-grok-pager/src/app/error_display.rs
 crates/codegen/xai-grok-pager/src/app/event_loop.rs
 crates/codegen/xai-grok-pager/src/app/effects/mod.rs
 crates/codegen/xai-grok-pager/src/app/app_view.rs
+crates/codegen/xai-grok-pager/src/app/app_view_tests.rs
 crates/codegen/xai-grok-pager/src/app/acp_handler/settings.rs
+crates/codegen/xai-grok-pager/src/app/dispatch/tests/mod.rs
 crates/codegen/xai-grok-pager/src/app/dispatch/mod.rs
 crates/codegen/xai-grok-pager/src/app/dispatch/auth.rs
 crates/codegen/xai-grok-pager/src/app/dispatch/billing.rs

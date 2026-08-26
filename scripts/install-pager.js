@@ -41,6 +41,11 @@ function releaseAssetUrl(version, key) {
   return `https://github.com/hyzhou1990/sisu-cli/releases/download/v${version}/xai-grok-pager-${key}.br`
 }
 
+function pagerUnavailableReason(key, version) {
+  const ver = version ? ` (v${version})` : ''
+  return `no prebuilt SiSu TUI pager for ${key}${ver}; this CLI will use the Node TUI`
+}
+
 function pagerStampPath(dest) {
   return `${dest}.version`
 }
@@ -104,7 +109,7 @@ async function installPager(options = {}) {
   const version = options.version || readVersion()
   const dest = options.dest || pagerBinPath()
   if (!SUPPORTED.has(key)) {
-    return { ok: false, skipped: true, reason: `no prebuilt pager for ${key}` }
+    return { ok: false, skipped: true, reason: pagerUnavailableReason(key, version) }
   }
   const have = fs.existsSync(dest)
   const stamped = have ? installedPagerVersion(dest) : ''
@@ -119,10 +124,18 @@ async function installPager(options = {}) {
   }
   if (!version) return { ok: false, reason: 'missing package version' }
   const url = options.url || releaseAssetUrl(version, key)
-  const payload = await download(url)
-  writeBinary(decodePayload(payload), dest)
-  writePagerStamp(dest, version)
-  return { ok: true, dest, url }
+  try {
+    const payload = await download(url)
+    writeBinary(decodePayload(payload), dest)
+    writePagerStamp(dest, version)
+    return { ok: true, dest, url }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (/\(404\)/.test(message)) {
+      return { ok: false, skipped: true, reason: pagerUnavailableReason(key, version), url }
+    }
+    throw error
+  }
 }
 
 module.exports = {
@@ -132,6 +145,7 @@ module.exports = {
   installedPagerVersion,
   pagerBinPath,
   pagerStampPath,
+  pagerUnavailableReason,
   platformKey,
   releaseAssetUrl,
   writeBinary,
@@ -142,7 +156,7 @@ if (require.main === module) {
   installPager({ force: process.argv.includes('--force') }).then(
     (result) => {
       if (result.ok) {
-        if (!result.skipped) process.stdout.write(`installed grok pager to ${result.dest}\n`)
+        if (!result.skipped) process.stdout.write(`installed SiSu pager to ${result.dest}\n`)
         process.exit(0)
       }
       process.stderr.write(`sisu pager: ${result.reason}\n`)

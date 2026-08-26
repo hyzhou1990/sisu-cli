@@ -20,6 +20,25 @@ fn add_cli_chat_proxy_headers_blocking(
     alpha_test_key: Option<&str>,
     url: &str,
 ) -> reqwest::blocking::RequestBuilder {
+    if crate::sisu_access_point::active() {
+        let mut builder = builder.header("x-grok-client-version", xai_grok_version::VERSION);
+        if crate::sisu_access_point::is_grok_or_xai_url(url) {
+            return builder;
+        }
+        if let Some(authz) = crate::sisu_access_point::access_point_authorization() {
+            builder = builder.header("Authorization", authz);
+        }
+        let _ = (auth, alpha_test_key);
+        return builder
+            .header(
+                "x-grok-client-identifier",
+                crate::http::process_client_identifier(),
+            )
+            .header(
+                crate::http::CLIENT_MODE_HEADER,
+                crate::http::process_client_mode(),
+            );
+    }
     let mut builder = builder
         .header("Authorization", format!("Bearer {}", &auth.key))
         .header("X-XAI-Token-Auth", GrokComConfig::default().token_header)
@@ -52,6 +71,24 @@ async fn add_bundle_fetch_headers(
     alpha_test_key: Option<&str>,
     url: &str,
 ) -> reqwest::RequestBuilder {
+    if crate::sisu_access_point::active() {
+        let mut builder = builder.header("x-grok-client-version", xai_grok_version::VERSION);
+        if !crate::sisu_access_point::is_grok_or_xai_url(url) {
+            if let Some(authz) = crate::sisu_access_point::access_point_authorization() {
+                builder = builder.header("Authorization", authz);
+            }
+        }
+        let _ = (auth_manager, deployment_key, alpha_test_key);
+        return builder
+            .header(
+                "x-grok-client-identifier",
+                crate::http::process_client_identifier(),
+            )
+            .header(
+                crate::http::CLIENT_MODE_HEADER,
+                crate::http::process_client_mode(),
+            );
+    }
     let resolved_auth = match auth_manager {
         Some(am) => am.auth().await.ok(),
         None => None,

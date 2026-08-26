@@ -37,6 +37,7 @@ mod transcript;
 mod turn;
 mod voice;
 
+pub(crate) use auth::intercept_access_point_billed_auth_failure;
 pub(crate) use auth::scrollback_has_recent_disk_full;
 pub(in crate::app) use auth::scrollback_has_recent_error_banner;
 pub(crate) use auth::SISU_LOGIN_EXIT_CODE;

@@ -7,7 +7,7 @@ const { installPager } = require('./install-pager')
 installPager().then(
   (result) => {
     if (result.ok && !result.skipped) {
-      process.stdout.write(`sisu: grok pager -> ${result.dest}\n`)
+      process.stdout.write(`sisu: pager -> ${result.dest}\n`)
     } else if (!result.ok && result.reason) {
       process.stdout.write(`sisu: ${result.reason} (Node TUI still works)\n`)
     }
