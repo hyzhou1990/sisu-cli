@@ -1,8 +1,8 @@
 name: Pager release assets
 
-# Builds xai-grok-pager-*.br for install-pager SUPPORTED keys.
-# vendor/grok-build is gitignored — this job expects the release checkout
-# (or a manual workflow_dispatch on a machine/tree that has vendor present).
+# Tag v* builds darwin-arm64 + linux only.
+# darwin-x64 is dispatch-only (macos-13); missing asset → install-pager 404 → Node TUI.
+# vendor/grok-build is gitignored — this job fetches the pin then applies overlays.
 # Do not upload placeholder binaries.
 
 on:
@@ -11,7 +11,7 @@ on:
       platforms:
         description: 'Comma-separated PLATFORM_KEY values'
         required: false
-        default: 'darwin-arm64,darwin-x64,linux-x64,linux-arm64'
+        default: 'darwin-arm64,linux-x64,linux-arm64'
   push:
     tags:
       - 'v*'
@@ -22,16 +22,12 @@ permissions:
 jobs:
   build-pager:
     name: pager ${{ matrix.platform }}
-    # Native runners only — no fake cross binaries.
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: darwin-arm64
             os: macos-14
-            cargo_target: ''
-          - platform: darwin-x64
-            os: macos-13
             cargo_target: ''
           - platform: linux-x64
             os: ubuntu-latest
@@ -76,7 +72,6 @@ jobs:
           PACKAGE_BR: '1'
         run: |
           set -euo pipefail
-          # Empty CARGO_TARGET → unset so the script builds host-native.
           if [ -z "${CARGO_TARGET}" ]; then unset CARGO_TARGET; fi
           sh scripts/build-grok-pager.sh
           test -f "bin/xai-grok-pager-${PLATFORM_KEY}.br"
@@ -86,5 +81,50 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: bin/xai-grok-pager-${{ matrix.platform }}.br
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-pager-x64:
+    name: pager darwin-x64
+    if: github.event_name == 'workflow_dispatch' && contains(github.event.inputs.platforms, 'darwin-x64')
+    runs-on: macos-13
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Fetch pinned grok-build and apply SiSu overlay
+        run: |
+          set -euo pipefail
+          sh scripts/fetch-grok-build.sh
+          test -f vendor/grok-build/crates/codegen/xai-grok-pager-bin/src/sisu_access_point.rs
+          test -f vendor/grok-build/crates/codegen/xai-grok-shell/src/sisu_access_point.rs
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protoc
+        run: |
+          set -euo pipefail
+          brew install protobuf
+
+      - name: Build and package .br
+        env:
+          PLATFORM_KEY: darwin-x64
+          INSTALL_HOME: '0'
+          PACKAGE_BR: '1'
+        run: |
+          set -euo pipefail
+          sh scripts/build-grok-pager.sh
+          test -f bin/xai-grok-pager-darwin-x64.br
+
+      - name: Upload release asset
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bin/xai-grok-pager-darwin-x64.br
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
