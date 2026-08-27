@@ -5,7 +5,7 @@ import { sisuMobiusArt, sisuSplash, sisuSplashFrame, sisuSplashHeight, sisuWordm
 import { mobiusFrameHeight } from './mobius'
 import { runPager, type PagerIo, type RunPagerOptions } from './pager/app'
 import { stdioPagerIo } from './pager/stdio'
-import { getSisuHome, readAuth, sisuEngineHome } from './store'
+import { DEFAULT_API_BASE, getSisuHome, readAuth, sisuEngineHome } from './store'
 import {
   assertRuntimeAvailable,
   findGrokBuildBinary,
@@ -17,6 +17,7 @@ import {
   writeSisuGrokConfig,
 } from './runtime/launch'
 import { createLocalRuntimeTransport } from './runtime/transport'
+import { postTranscriptEvent, startCompactionCheckpointWatch } from './runtime/transcriptEvents'
 import type { TurnTransport } from './transport'
 import { spawn } from 'child_process'
 
@@ -326,14 +327,32 @@ export async function runTui(
         purgeChangelogCache(home, engine)
         writeSisuGrokConfig()
         io.close?.()
+        const env = sisuGrokBuildEnv()
+        const stopWatch = startCompactionCheckpointWatch({
+          engineHome: engine,
+          conversationId: String(env.SISU_CONVERSATION_ID || ''),
+          post: async (event) => {
+            const current = auth()
+            if (!current?.token) return false
+            return postTranscriptEvent(
+              http,
+              current.api_base || DEFAULT_API_BASE,
+              current.token,
+              event,
+            )
+          },
+        })
         const child = spawn(grokBin, [], {
           stdio: 'inherit',
-          env: sisuGrokBuildEnv(),
+          env,
           cwd: process.cwd(),
         })
         return new Promise<number>((resolve) => {
-          child.on('exit', (code) => resolve(code ?? 1))
-          child.on('error', () => resolve(1))
+          const finish = (code: number) => {
+            void stopWatch().finally(() => resolve(code))
+          }
+          child.on('exit', (code) => finish(code ?? 1))
+          child.on('error', () => finish(1))
         })
       })
 

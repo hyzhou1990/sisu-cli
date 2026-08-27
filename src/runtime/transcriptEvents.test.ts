@@ -1,0 +1,113 @@
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
+import {
+  flushNewCompactionCheckpoints,
+  listCompactionCheckpointFiles,
+  postTranscriptEvent,
+  transcriptEventFromCheckpoint,
+  transcriptEventFromToolLog,
+} from './transcriptEvents'
+
+function makeEngine(): string {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-engine-'))
+}
+
+it('parses grok compaction checkpoint compacted_history', () => {
+  const event = transcriptEventFromCheckpoint(
+    JSON.stringify({
+      checkpoint_id: 'cp-9',
+      prompt_index_at_compaction: 4,
+      schema_version: 1,
+      compacted_history: [{ role: 'user', content: 'summary of foo.py' }],
+    }),
+    '11111111-1111-1111-1111-111111111111',
+  )
+  expect(event?.kind).toBe('compaction')
+  expect(event?.client_request_id).toBe('cp-9')
+  expect(event?.messages).toEqual([{ role: 'user', content: 'summary of foo.py' }])
+  expect(event?.payload?.checkpoint_id).toBe('cp-9')
+})
+
+it('ignores checkpoint files without compacted_history', () => {
+  expect(transcriptEventFromCheckpoint('{"checkpoint_id":"x"}', 'c1')).toBeNull()
+  expect(transcriptEventFromCheckpoint('not-json', 'c1')).toBeNull()
+})
+
+it('lists only compaction_checkpoints json under sessions', () => {
+  const engine = makeEngine()
+  try {
+    const dir = path.join(engine, 'sessions', 'sess-1', 'compaction_checkpoints')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, 'a.json'), '{}')
+    fs.writeFileSync(path.join(engine, 'sessions', 'sess-1', 'updates.jsonl'), 'nope')
+    expect(listCompactionCheckpointFiles(engine)).toEqual([path.join(dir, 'a.json')])
+  } finally {
+    fs.rmSync(engine, { recursive: true, force: true })
+  }
+})
+
+it('flushes a new checkpoint once and posts compaction event', async () => {
+  const engine = makeEngine()
+  const posted: unknown[] = []
+  const seen = new Set<string>()
+  try {
+    const dir = path.join(engine, 'sessions', 'sess-1', 'compaction_checkpoints')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(
+      path.join(dir, 'cp.json'),
+      JSON.stringify({
+        checkpoint_id: 'cp-1',
+        compacted_history: [{ role: 'user', content: 'window' }],
+      }),
+    )
+    const first = await flushNewCompactionCheckpoints({
+      engineHome: engine,
+      conversationId: 'conv-1',
+      posted: seen,
+      post: async (event) => {
+        posted.push(event)
+        return true
+      },
+    })
+    const second = await flushNewCompactionCheckpoints({
+      engineHome: engine,
+      conversationId: 'conv-1',
+      posted: seen,
+      post: async (event) => {
+        posted.push(event)
+        return true
+      },
+    })
+    expect(first).toBe(1)
+    expect(second).toBe(0)
+    expect(posted).toHaveLength(1)
+    expect(posted[0]).toMatchObject({ kind: 'compaction', client_request_id: 'cp-1' })
+  } finally {
+    fs.rmSync(engine, { recursive: true, force: true })
+  }
+})
+
+it('posts transcript events to runtime with conversation header', async () => {
+  const calls: { url: string; init?: RequestInit }[] = []
+  const http = async (url: string, init?: RequestInit) => {
+    calls.push({ url, init })
+    return { ok: true, status: 200, json: async () => ({ ok: true }), text: async () => '' }
+  }
+  const ok = await postTranscriptEvent(http, 'https://www.sisu.chat/', 'jwt', {
+    kind: 'compaction',
+    conversation_id: 'conv-9',
+    messages: [{ role: 'user', content: 'w' }],
+  })
+  expect(ok).toBe(true)
+  expect(calls[0].url).toBe('https://www.sisu.chat/api/runtime/v1/transcript/events')
+  expect((calls[0].init?.headers as Record<string, string>)['x-sisu-conversation-id']).toBe('conv-9')
+  expect((calls[0].init?.headers as Record<string, string>).Authorization).toBe('Bearer jwt')
+  expect(JSON.parse(String(calls[0].init?.body)).kind).toBe('compaction')
+})
+
+it('builds tool_result_full events from local log content', () => {
+  const event = transcriptEventFromToolLog('full shell output', 'conv-1', 'call-1')
+  expect(event.kind).toBe('tool_result_full')
+  expect(event.payload).toEqual({ tool_call_id: 'call-1', content: 'full shell output' })
+})
