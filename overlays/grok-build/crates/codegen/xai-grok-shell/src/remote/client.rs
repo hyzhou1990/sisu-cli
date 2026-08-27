@@ -369,16 +369,19 @@ impl BackendClient {
         mut self,
         manager: std::sync::Arc<crate::auth::AuthManager>,
     ) -> Self {
+        self.auth_manager = Some(manager.clone());
+        if crate::sisu_access_point::active() {
+            return self;
+        }
         let credentials: std::sync::Arc<dyn xai_grok_auth::AuthCredentialProvider> =
             std::sync::Arc::new(
                 crate::auth::credential_provider::ShellAuthCredentialProvider::new(
-                    manager.clone(),
+                    manager,
                     None,
                     None,
                 ),
             );
         self.client = crate::http::with_auth_retry(self.reqwest_client.clone(), credentials);
-        self.auth_manager = Some(manager);
         self
     }
     /// Resolve auth from the attached `AuthManager`.
@@ -435,6 +438,30 @@ impl BackendClient {
     /// See: crates/codegen/xai-grok-shell/src/agent/app.rs:run_headless
     async fn auth_header_map(&self) -> Result<reqwest::header::HeaderMap, BackendError> {
         use reqwest::header::{HeaderMap, HeaderValue};
+        if crate::sisu_access_point::active() {
+            let mut headers = HeaderMap::new();
+            let required = |value: &str, name: &str| -> Result<HeaderValue, BackendError> {
+                HeaderValue::from_str(value)
+                    .map_err(|e| BackendError::Auth(format!("invalid {name} header: {e}")))
+            };
+            if let Some(Some(authz)) =
+                crate::sisu_access_point::access_point_authorization_for_url(&self.base_url)
+            {
+                headers.insert("Authorization", required(&authz, "Authorization")?);
+            }
+            if let Ok(v) = HeaderValue::from_str(&crate::http::process_client_identifier()) {
+                headers.insert("x-grok-client-identifier", v);
+            }
+            headers.insert(
+                crate::http::CLIENT_MODE_HEADER,
+                HeaderValue::from_static(crate::http::process_client_mode()),
+            );
+            headers.insert(
+                "x-grok-client-version",
+                HeaderValue::from_static(xai_grok_version::VERSION),
+            );
+            return Ok(headers);
+        }
         let auth = self.resolve_auth().await?;
         let mut headers = HeaderMap::new();
         let required = |value: &str, name: &str| -> Result<HeaderValue, BackendError> {

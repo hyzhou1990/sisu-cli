@@ -102,6 +102,21 @@ pub fn access_point_authorization() -> Option<String> {
     sisu_token().map(|token| format!("Bearer {token}"))
 }
 
+/// Access-point Authorization for a concrete URL.
+///
+/// - `None` — not access-point; caller uses grok AuthStore.
+/// - `Some(None)` — access-point, attach nothing (grok.com / api.x.ai / auth.x.ai, or no token).
+/// - `Some(Some("Bearer …"))` — attach SiSu JWT.
+pub fn access_point_authorization_for_url(url: &str) -> Option<Option<String>> {
+    if !active() {
+        return None;
+    }
+    if is_grok_or_xai_url(url) {
+        return Some(None);
+    }
+    Some(access_point_authorization())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BilledTurnCopy {
     pub headline: &'static str,
@@ -262,6 +277,30 @@ mod tests {
 
         let _ok = EnvGuard::set("GROK_CLI_CHAT_PROXY_BASE_URL", sisu);
         assert_eq!(runtime_contract_error(), None);
+    }
+
+    #[test]
+    #[serial]
+    fn access_point_authorization_for_url_omits_on_xai() {
+        let _ap = EnvGuard::set("SISU_ACCESS_POINT", "1");
+        let _tok = EnvGuard::set("SISU_TOKEN", "sisu-jwt");
+        assert_eq!(
+            access_point_authorization_for_url("https://api.x.ai/v1/models"),
+            Some(None)
+        );
+        assert_eq!(
+            access_point_authorization_for_url("https://cli-chat-proxy.grok.com/v1/user"),
+            Some(None)
+        );
+        assert_eq!(
+            access_point_authorization_for_url("https://www.sisu.chat/api/runtime/v1/user"),
+            Some(Some("Bearer sisu-jwt".into()))
+        );
+        let _off = EnvGuard::unset("SISU_ACCESS_POINT");
+        assert_eq!(
+            access_point_authorization_for_url("https://www.sisu.chat/api/runtime/v1/user"),
+            None
+        );
     }
 
     #[test]

@@ -1148,6 +1148,124 @@ async fn access_point_fetch_bundle_archive_sends_sisu_token_not_grok_authstore()
         "must not send leftover grok AuthStore token"
     );
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[serial_test::serial]
+async fn access_point_feedback_config_sends_sisu_token_not_grok_authstore() {
+    use crate::agent::feedback_client::FeedbackClient;
+    use xai_grok_test_support::EnvGuard;
+    let _ap = EnvGuard::set("SISU_ACCESS_POINT", "1");
+    let _tok = EnvGuard::set("SISU_TOKEN", "sisu-jwt-aux");
+    let grok_key = test_auth().key.clone();
+    let seen = Arc::new(Mutex::new(Vec::<Option<String>>::new()));
+    let seen_clone = seen.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let app = Router::new().route(
+        "/v1/feedback/config",
+        get(move |headers: HeaderMap| {
+            let seen = seen_clone.clone();
+            async move {
+                seen.lock()
+                    .unwrap()
+                    .push(header_str(&headers, "authorization"));
+                axum::Json(serde_json::json!({}))
+            }
+        }),
+    );
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let am = test_auth_manager();
+    let client = FeedbackClient::new(format!("http://{addr}/v1"), Some(grok_key.clone()))
+        .with_auth_manager(am);
+    let _ = client.get_feedback_config().await;
+    server.abort();
+    let headers = seen.lock().unwrap();
+    assert_eq!(
+        headers.last().and_then(|h| h.as_deref()),
+        Some("Bearer sisu-jwt-aux"),
+        "GET /feedback/config must send SISU_TOKEN, not grok AuthStore: {headers:?}"
+    );
+    assert!(
+        !headers.iter().flatten().any(|h| h.contains(&grok_key)),
+        "must not send leftover grok AuthStore token"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[serial_test::serial]
+async fn access_point_user_enrichment_sends_sisu_token_not_grok_authstore() {
+    use crate::auth::{AuthManager, GrokAuth, GrokComConfig};
+    use xai_grok_test_support::EnvGuard;
+    let _ap = EnvGuard::set("SISU_ACCESS_POINT", "1");
+    let _tok = EnvGuard::set("SISU_TOKEN", "sisu-jwt-user");
+    let grok_key = "grok-leftover-user-key".to_string();
+    let seen = Arc::new(Mutex::new(Vec::<Option<String>>::new()));
+    let seen_clone = seen.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let app = Router::new().route(
+        "/user",
+        get(move |headers: HeaderMap| {
+            let seen = seen_clone.clone();
+            async move {
+                seen.lock()
+                    .unwrap()
+                    .push(header_str(&headers, "authorization"));
+                axum::Json(serde_json::json!({ "userId": "u-sisu" }))
+            }
+        }),
+    );
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let dir = tempfile::tempdir().unwrap();
+    let mgr = AuthManager::new(dir.path(), GrokComConfig::default())
+        .with_proxy_base_url(&format!("http://127.0.0.1:{port}"));
+    let mut auth = GrokAuth {
+        key: grok_key.clone(),
+        ..GrokAuth::test_default()
+    };
+    mgr.enrich_auth_inline(&mut auth).await;
+    server.abort();
+    let headers = seen.lock().unwrap();
+    assert_eq!(
+        headers.last().and_then(|h| h.as_deref()),
+        Some("Bearer sisu-jwt-user"),
+        "GET /user must send SISU_TOKEN, not grok AuthStore: {headers:?}"
+    );
+    assert!(
+        !headers.iter().flatten().any(|h| h.contains(&grok_key)),
+        "must not send leftover grok AuthStore token"
+    );
+}
+
+#[test]
+#[serial_test::serial]
+fn access_point_auth_apply_skips_sisu_jwt_on_xai_url() {
+    use crate::util::grok_auth_credentials::GrokAuthCredentials;
+    use xai_grok_test_support::EnvGuard;
+    let _ap = EnvGuard::set("SISU_ACCESS_POINT", "1");
+    let _tok = EnvGuard::set("SISU_TOKEN", "sisu-jwt-xai");
+    let creds = GrokAuthCredentials::new(Some("grok-leftover".into()));
+    let request = creds
+        .apply(
+            reqwest::Client::new().get("https://api.x.ai/v1/models"),
+            "https://api.x.ai/v1/models",
+        )
+        .build()
+        .unwrap();
+    let auth = request
+        .headers()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok());
+    assert!(
+        auth.map(|a| a.contains("sisu-jwt-xai")) != Some(true),
+        "must not put SISU_TOKEN on api.x.ai: {auth:?}"
+    );
+    assert_eq!(
+        auth, None,
+        "access-point must not attach grok AuthStore or SiSu JWT to api.x.ai: {auth:?}"
+    );
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn fetch_bundle_falls_back_on_archive_404() {
     let (proxy_base_url, server) = start_dual_bundle_server(DualBundleServerState {

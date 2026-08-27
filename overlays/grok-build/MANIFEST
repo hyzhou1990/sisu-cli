@@ -37,3 +37,6 @@ crates/codegen/xai-grok-pager/src/views/tutorial.rs
 crates/codegen/xai-grok-pager-minimal/src/welcome.rs
 crates/codegen/xai-grok-pager-minimal/src/auth.rs
 crates/codegen/xai-grok-update/src/auto_update.rs
+crates/codegen/xai-grok-shell/src/util/grok_auth_credentials.rs
+crates/codegen/xai-grok-shell/src/auth/credential_provider.rs
+crates/codegen/xai-grok-shell/src/auth/manager/enrichment.rs
