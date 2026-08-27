@@ -148,6 +148,53 @@ pub fn billed_turn_is_host_login(status: u16) -> bool {
     active() && status == 401
 }
 
+/// Stamp billed-turn headers onto a sampling `extra_headers` map.
+/// Request id is per-request via [`sampling_header_injector`], never a static header.
+pub fn stamp_sampling_headers(extra_headers: &mut indexmap::IndexMap<String, String>) {
+    if !active() {
+        return;
+    }
+    extra_headers
+        .entry("x-sisu-client".to_string())
+        .or_insert_with(|| "tui".to_string());
+    extra_headers
+        .entry("x-sisu-client-version".to_string())
+        .or_insert_with(client_version);
+    extra_headers.shift_remove("x-sisu-client-request-id");
+    if let Ok(id) = std::env::var("SISU_CONVERSATION_ID") {
+        let id = id.trim().to_string();
+        if !id.is_empty() {
+            extra_headers
+                .entry("x-sisu-conversation-id".to_string())
+                .or_insert(id);
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct SisuClientRequestIdInjector;
+
+impl xai_grok_sampler::HeaderInjector for SisuClientRequestIdInjector {
+    fn inject(&self, headers: &mut reqwest::header::HeaderMap) {
+        if !active() {
+            return;
+        }
+        let id = uuid::Uuid::new_v4().to_string();
+        if let Ok(value) = reqwest::header::HeaderValue::from_str(&id) {
+            headers.insert("x-sisu-client-request-id", value);
+        }
+    }
+}
+
+/// Access-point request-id injector for `SamplerConfig.header_injector`.
+pub fn sampling_header_injector() -> Option<xai_grok_sampler::SharedHeaderInjector> {
+    if active() {
+        Some(std::sync::Arc::new(SisuClientRequestIdInjector))
+    } else {
+        None
+    }
+}
+
 pub fn client_version() -> String {
     std::env::var("SISU_CLIENT_VERSION")
         .ok()
@@ -355,5 +402,64 @@ mod tests {
         unlink_auth().unwrap();
         assert!(!path.exists());
         unlink_auth().unwrap(); // missing is ok
+    }
+
+    #[test]
+    #[serial]
+    fn stamp_sampling_headers_sets_client_and_skips_request_id() {
+        let _ap = EnvGuard::set("SISU_ACCESS_POINT", "1");
+        let _ver = EnvGuard::set("SISU_CLIENT_VERSION", "0.3.0");
+        let _cid = EnvGuard::unset("SISU_CONVERSATION_ID");
+        let mut headers = indexmap::IndexMap::new();
+        stamp_sampling_headers(&mut headers);
+        assert_eq!(headers.get("x-sisu-client").map(String::as_str), Some("tui"));
+        assert_eq!(
+            headers.get("x-sisu-client-version").map(String::as_str),
+            Some("0.3.0")
+        );
+        assert!(!headers.contains_key("x-sisu-client-request-id"));
+        assert!(!headers.contains_key("x-sisu-conversation-id"));
+        let injector = sampling_header_injector().expect("injector");
+        let mut map = reqwest::header::HeaderMap::new();
+        injector.inject(&mut map);
+        let first = map
+            .get("x-sisu-client-request-id")
+            .expect("request id")
+            .clone();
+        let mut map2 = reqwest::header::HeaderMap::new();
+        injector.inject(&mut map2);
+        let second = map2
+            .get("x-sisu-client-request-id")
+            .expect("request id")
+            .clone();
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    #[serial]
+    fn stamp_sampling_headers_keeps_stable_conversation_id() {
+        let _ap = EnvGuard::set("SISU_ACCESS_POINT", "1");
+        let _cid = EnvGuard::set(
+            "SISU_CONVERSATION_ID",
+            "11111111-1111-1111-1111-111111111111",
+        );
+        let mut headers = indexmap::IndexMap::new();
+        stamp_sampling_headers(&mut headers);
+        assert_eq!(
+            headers.get("x-sisu-conversation-id").map(String::as_str),
+            Some("11111111-1111-1111-1111-111111111111")
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn stamp_sampling_headers_is_noop_when_not_access_point() {
+        let _off = EnvGuard::unset("SISU_ACCESS_POINT");
+        let mut headers = indexmap::IndexMap::new();
+        headers.insert("keep".to_string(), "me".to_string());
+        stamp_sampling_headers(&mut headers);
+        assert_eq!(headers.len(), 1);
+        assert_eq!(headers.get("keep").map(String::as_str), Some("me"));
+        assert!(sampling_header_injector().is_none());
     }
 }

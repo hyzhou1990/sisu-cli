@@ -5252,23 +5252,7 @@ pub(crate) fn sampling_config_for_model(
         alpha_test_key.as_deref(),
         &credentials.base_url,
     );
-    if crate::sisu_access_point::active() {
-        extra_headers
-            .entry("x-sisu-client".to_string())
-            .or_insert_with(|| "tui".to_string());
-        extra_headers
-            .entry("x-sisu-client-version".to_string())
-            .or_insert_with(crate::sisu_access_point::client_version);
-        extra_headers.shift_remove("x-sisu-client-request-id");
-        if let Ok(id) = std::env::var("SISU_CONVERSATION_ID") {
-            let id = id.trim().to_string();
-            if !id.is_empty() {
-                extra_headers
-                    .entry("x-sisu-conversation-id".to_string())
-                    .or_insert(id);
-            }
-        }
-    }
+    crate::sisu_access_point::stamp_sampling_headers(&mut extra_headers);
     let api_backend = info.api_backend.clone();
     let extra_response_includes = response_include_extensions(
         info.supports_backend_search,
@@ -5305,26 +5289,7 @@ pub(crate) fn sampling_config_for_model(
         compactions_remaining: info.compactions_remaining,
         compaction_at_tokens: info.compaction_at_tokens,
         doom_loop_recovery: None,
-        header_injector: if crate::sisu_access_point::active() {
-            Some(std::sync::Arc::new(SisuClientRequestIdInjector))
-        } else {
-            None
-        },
-    }
-}
-
-#[derive(Debug)]
-pub(crate) struct SisuClientRequestIdInjector;
-
-impl HeaderInjector for SisuClientRequestIdInjector {
-    fn inject(&self, headers: &mut reqwest::header::HeaderMap) {
-        if !crate::sisu_access_point::active() {
-            return;
-        }
-        let id = uuid::Uuid::new_v4().to_string();
-        if let Ok(value) = reqwest::header::HeaderValue::from_str(&id) {
-            headers.insert("x-sisu-client-request-id", value);
-        }
+        header_injector: crate::sisu_access_point::sampling_header_injector(),
     }
 }
 
@@ -5591,5 +5556,5 @@ impl ModelSwitchIncompatibleAgentError {
     }
 }
 #[cfg(test)]
-#[path = "config_tests.rs"]
+#[path = "config_sisu_tests.rs"]
 mod tests;
