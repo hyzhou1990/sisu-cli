@@ -5,6 +5,7 @@ import {
   flushNewCompactionCheckpoints,
   listCompactionCheckpointFiles,
   postTranscriptEvent,
+  rememberExistingCheckpoints,
   transcriptEventFromCheckpoint,
   transcriptEventFromToolLog,
 } from './transcriptEvents'
@@ -110,4 +111,59 @@ it('builds tool_result_full events from local log content', () => {
   const event = transcriptEventFromToolLog('full shell output', 'conv-1', 'call-1')
   expect(event.kind).toBe('tool_result_full')
   expect(event.payload).toEqual({ tool_call_id: 'call-1', content: 'full shell output' })
+})
+
+it('does not post checkpoints that existed before the watch seeded posted', async () => {
+  const engine = makeEngine()
+  const postedEvents: unknown[] = []
+  try {
+    const oldDir = path.join(engine, 'sessions', 'old-sess', 'compaction_checkpoints')
+    const liveDir = path.join(engine, 'sessions', 'live-sess', 'compaction_checkpoints')
+    fs.mkdirSync(oldDir, { recursive: true })
+    fs.mkdirSync(liveDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(oldDir, 'old.json'),
+      JSON.stringify({
+        checkpoint_id: 'old-cp',
+        compacted_history: [{ role: 'user', content: 'from other session' }],
+      }),
+    )
+    const seen = new Set<string>()
+    rememberExistingCheckpoints(engine, seen)
+    fs.writeFileSync(
+      path.join(liveDir, 'new.json'),
+      JSON.stringify({
+        checkpoint_id: 'new-cp',
+        compacted_history: [{ role: 'user', content: 'this conversation' }],
+      }),
+    )
+    const sent = await flushNewCompactionCheckpoints({
+      engineHome: engine,
+      conversationId: 'conv-live',
+      posted: seen,
+      post: async (event) => {
+        postedEvents.push(event)
+        return true
+      },
+    })
+    expect(sent).toBe(1)
+    expect(postedEvents).toHaveLength(1)
+    expect(postedEvents[0]).toMatchObject({
+      kind: 'compaction',
+      client_request_id: 'new-cp',
+      conversation_id: 'conv-live',
+    })
+    expect(JSON.stringify(postedEvents)).not.toContain('from other session')
+  } finally {
+    fs.rmSync(engine, { recursive: true, force: true })
+  }
+})
+
+it('uses checkpoint filename when checkpoint_id is missing', () => {
+  const event = transcriptEventFromCheckpoint(
+    JSON.stringify({ compacted_history: [{ role: 'user', content: 'w' }] }),
+    'conv-1',
+    'file-uuid',
+  )
+  expect(event?.client_request_id).toBe('file-uuid')
 })

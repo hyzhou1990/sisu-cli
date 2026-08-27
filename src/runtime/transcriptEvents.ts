@@ -13,7 +13,11 @@ export type TranscriptEvent = {
   payload?: Record<string, unknown>
 }
 
-export function transcriptEventFromCheckpoint(raw: string, conversationId: string): TranscriptEvent | null {
+export function transcriptEventFromCheckpoint(
+  raw: string,
+  conversationId: string,
+  fallbackId?: string,
+): TranscriptEvent | null {
   let parsed: { compacted_history?: unknown; checkpoint_id?: unknown; schema_version?: unknown; prompt_index_at_compaction?: unknown }
   try {
     parsed = JSON.parse(raw) as typeof parsed
@@ -21,14 +25,15 @@ export function transcriptEventFromCheckpoint(raw: string, conversationId: strin
     return null
   }
   if (!Array.isArray(parsed.compacted_history)) return null
-  const checkpointId = String(parsed.checkpoint_id || '').trim()
+  const checkpointId = String(parsed.checkpoint_id || '').trim() || String(fallbackId || '').trim()
+  if (!checkpointId) return null
   return {
     kind: 'compaction',
     conversation_id: conversationId,
-    client_request_id: checkpointId || undefined,
+    client_request_id: checkpointId,
     messages: parsed.compacted_history,
     payload: {
-      checkpoint_id: checkpointId || undefined,
+      checkpoint_id: checkpointId,
       schema_version: parsed.schema_version,
       prompt_index_at_compaction: parsed.prompt_index_at_compaction,
     },
@@ -60,6 +65,10 @@ export function listCompactionCheckpointFiles(engineHome: string): string[] {
     }
   }
   return out.sort()
+}
+
+export function rememberExistingCheckpoints(engineHome: string, posted: Set<string>): void {
+  for (const file of listCompactionCheckpointFiles(engineHome)) posted.add(file)
 }
 
 export async function postTranscriptEvent(
@@ -94,7 +103,7 @@ export async function flushNewCompactionCheckpoints(options: {
     } catch {
       continue
     }
-    const event = transcriptEventFromCheckpoint(raw, options.conversationId)
+    const event = transcriptEventFromCheckpoint(raw, options.conversationId, path.parse(file).name)
     if (!event) continue
     const ok = await options.post(event)
     if (!ok) continue
@@ -111,6 +120,7 @@ export function startCompactionCheckpointWatch(options: {
   intervalMs?: number
 }): () => Promise<void> {
   const posted = new Set<string>()
+  rememberExistingCheckpoints(options.engineHome, posted)
   const tick = () =>
     flushNewCompactionCheckpoints({
       engineHome: options.engineHome,
