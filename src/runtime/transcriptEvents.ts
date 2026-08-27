@@ -71,6 +71,65 @@ export function rememberExistingCheckpoints(engineHome: string, posted: Set<stri
   for (const file of listCompactionCheckpointFiles(engineHome)) posted.add(file)
 }
 
+export function listTerminalLogFiles(engineHome: string): string[] {
+  const sessions = path.join(engineHome, 'sessions')
+  if (!fs.existsSync(sessions)) return []
+  const out: string[] = []
+  for (const sessionName of fs.readdirSync(sessions)) {
+    const dir = path.join(sessions, sessionName, 'terminal')
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) continue
+    for (const name of fs.readdirSync(dir)) {
+      if (name.endsWith('.log')) out.push(path.join(dir, name))
+    }
+  }
+  return out.sort()
+}
+
+export function rememberExistingTerminalLogs(engineHome: string, posted: Set<string>): void {
+  for (const file of listTerminalLogFiles(engineHome)) posted.add(file)
+}
+
+const TOOL_LOG_MAX_BYTES = 8 * 1024 * 1024
+
+function readToolLog(file: string): string {
+  const size = fs.statSync(file).size
+  if (size <= 0) return ''
+  if (size <= TOOL_LOG_MAX_BYTES) return fs.readFileSync(file, 'utf8')
+  const fd = fs.openSync(file, 'r')
+  try {
+    const buf = Buffer.alloc(TOOL_LOG_MAX_BYTES)
+    fs.readSync(fd, buf, 0, TOOL_LOG_MAX_BYTES, 0)
+    return buf.toString('utf8')
+  } finally {
+    fs.closeSync(fd)
+  }
+}
+
+export async function flushNewTerminalLogs(options: {
+  engineHome: string
+  conversationId: string
+  posted: Set<string>
+  post: (event: TranscriptEvent) => Promise<boolean>
+}): Promise<number> {
+  let sent = 0
+  for (const file of listTerminalLogFiles(options.engineHome)) {
+    if (options.posted.has(file)) continue
+    let content = ''
+    try {
+      content = readToolLog(file)
+    } catch {
+      continue
+    }
+    if (!content) continue
+    const event = transcriptEventFromToolLog(content, options.conversationId, path.parse(file).name)
+    const ok = await options.post(event)
+    if (!ok) continue
+    options.posted.add(file)
+    sent += 1
+  }
+  return sent
+}
+
 export async function postTranscriptEvent(
   http: HttpClient,
   apiBase: string,
@@ -113,7 +172,7 @@ export async function flushNewCompactionCheckpoints(options: {
   return sent
 }
 
-export function startCompactionCheckpointWatch(options: {
+export function startTranscriptWatch(options: {
   engineHome: string
   conversationId: string
   post: (event: TranscriptEvent) => Promise<boolean>
@@ -121,13 +180,22 @@ export function startCompactionCheckpointWatch(options: {
 }): () => Promise<void> {
   const posted = new Set<string>()
   rememberExistingCheckpoints(options.engineHome, posted)
+  rememberExistingTerminalLogs(options.engineHome, posted)
   const tick = () =>
-    flushNewCompactionCheckpoints({
-      engineHome: options.engineHome,
-      conversationId: options.conversationId,
-      posted,
-      post: options.post,
-    }).catch(() => 0)
+    Promise.all([
+      flushNewCompactionCheckpoints({
+        engineHome: options.engineHome,
+        conversationId: options.conversationId,
+        posted,
+        post: options.post,
+      }),
+      flushNewTerminalLogs({
+        engineHome: options.engineHome,
+        conversationId: options.conversationId,
+        posted,
+        post: options.post,
+      }),
+    ]).catch(() => 0)
   const timer = setInterval(() => {
     void tick()
   }, options.intervalMs ?? 2000)
@@ -137,3 +205,5 @@ export function startCompactionCheckpointWatch(options: {
     await tick()
   }
 }
+
+export const startCompactionCheckpointWatch = startTranscriptWatch

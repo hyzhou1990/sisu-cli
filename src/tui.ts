@@ -17,7 +17,7 @@ import {
   writeSisuGrokConfig,
 } from './runtime/launch'
 import { createLocalRuntimeTransport } from './runtime/transport'
-import { postTranscriptEvent, startCompactionCheckpointWatch } from './runtime/transcriptEvents'
+import { postTranscriptEvent, startTranscriptWatch } from './runtime/transcriptEvents'
 import type { TurnTransport } from './transport'
 import { spawn } from 'child_process'
 
@@ -328,7 +328,7 @@ export async function runTui(
         writeSisuGrokConfig()
         io.close?.()
         const env = sisuGrokBuildEnv()
-        const stopWatch = startCompactionCheckpointWatch({
+        const stopWatch = startTranscriptWatch({
           engineHome: engine,
           conversationId: String(env.SISU_CONVERSATION_ID || ''),
           post: async (event) => {

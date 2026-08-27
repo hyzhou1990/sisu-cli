@@ -6,6 +6,8 @@ import {
   listCompactionCheckpointFiles,
   postTranscriptEvent,
   rememberExistingCheckpoints,
+  rememberExistingTerminalLogs,
+  flushNewTerminalLogs,
   transcriptEventFromCheckpoint,
   transcriptEventFromToolLog,
 } from './transcriptEvents'
@@ -166,4 +168,40 @@ it('uses checkpoint filename when checkpoint_id is missing', () => {
     'file-uuid',
   )
   expect(event?.client_request_id).toBe('file-uuid')
+})
+
+it('posts only new terminal logs from this pager run as tool_result_full', async () => {
+  const engine = makeEngine()
+  const postedEvents: unknown[] = []
+  try {
+    const oldDir = path.join(engine, 'sessions', 'old-sess', 'terminal')
+    const liveDir = path.join(engine, 'sessions', 'live-sess', 'terminal')
+    fs.mkdirSync(oldDir, { recursive: true })
+    fs.mkdirSync(liveDir, { recursive: true })
+    fs.writeFileSync(path.join(oldDir, 'call-old.log'), 'old shell output')
+    const seen = new Set<string>()
+    rememberExistingCheckpoints(engine, seen)
+    rememberExistingTerminalLogs(engine, seen)
+    fs.writeFileSync(path.join(liveDir, 'call-new.log'), 'full shell output')
+    const sent = await flushNewTerminalLogs({
+      engineHome: engine,
+      conversationId: 'conv-live',
+      posted: seen,
+      post: async (event) => {
+        postedEvents.push(event)
+        return true
+      },
+    })
+    expect(sent).toBe(1)
+    expect(postedEvents).toHaveLength(1)
+    expect(postedEvents[0]).toMatchObject({
+      kind: 'tool_result_full',
+      client_request_id: 'call-new',
+      conversation_id: 'conv-live',
+      payload: { tool_call_id: 'call-new', content: 'full shell output' },
+    })
+    expect(JSON.stringify(postedEvents)).not.toContain('old shell output')
+  } finally {
+    fs.rmSync(engine, { recursive: true, force: true })
+  }
 })
