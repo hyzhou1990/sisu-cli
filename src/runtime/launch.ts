@@ -71,6 +71,9 @@ export function writeSisuGrokConfig(): string {
     '[endpoints]',
     `xai_api_base_url = "${runtimeBase}"`,
     '',
+    '[agent]',
+    'system_prompt_label = "SiSu"',
+    '',
   ].join('\n')
   const existing = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : ''
   if (!existing || existing.includes('sisu-managed grok-build')) {
@@ -200,6 +203,7 @@ export function sisuGrokBuildEnv(): NodeJS.ProcessEnv {
     SISU_ACCOUNT_PLAN: auth?.plan_code || '',
     SISU_API_BASE: apiBase,
     SISU_CLIENT_VERSION,
+    GROK_SYSTEM_PROMPT_LABEL: 'SiSu',
     SISU_CONVERSATION_ID: ensureConversationId(),
     GROK_XAI_API_BASE_URL: runtime,
     XAI_API_BASE_URL: runtime,

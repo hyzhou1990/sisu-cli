@@ -6,6 +6,17 @@ import { helpText } from '../main'
 import { sisuGrokBuildEnv, writeSisuGrokConfig } from './launch'
 import { PRODUCT_BIN, PRODUCT_NAME, assertGrokBuildSuite, grokBuildPath, grokBuildSuitePresent } from './suite'
 
+it('overlay system prompt is SiSu, not Grok released by xAI', () => {
+  const promptTpl = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'overlays', 'grok-build', 'crates', 'codegen', 'xai-grok-agent', 'templates', 'prompt.md'),
+    'utf8',
+  )
+  expect(promptTpl).toMatch(/思溯 \/ SiSu/)
+  expect(promptTpl).not.toMatch(/released by xAI/)
+  expect(promptTpl).not.toMatch(/Grok Build TUI/)
+  expect(promptTpl.startsWith('You are ${{ system_prompt_label }}')).toBe(true)
+})
+
 it('vendors the grok-build suite plus Apache NOTICE/LICENSE', () => {
   const rows = grokBuildSuitePresent()
   if (!rows.every((row) => row.ok)) {

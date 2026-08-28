@@ -121,6 +121,8 @@ it('sisuGrokBuildEnv points grok-build at SiSu via GROK_XAI_API_BASE_URL', () =>
     const configPath = writeSisuGrokConfig()
     expect(configPath).toBe(path.join(home, 'engine', 'config.toml'))
     expect(fs.readFileSync(configPath, 'utf8')).toContain('xai_api_base_url = "https://www.sisu.chat/api/runtime/v1"')
+    expect(fs.readFileSync(configPath, 'utf8')).toContain('system_prompt_label = "SiSu"')
+    expect(env.GROK_SYSTEM_PROMPT_LABEL).toBe('SiSu')
     const bootPath = path.join(path.dirname(grokBuildPath('pager')), 'xai-grok-pager-bin', 'src', 'sisu_boot.rs')
     if (fs.existsSync(bootPath)) {
       const boot = fs.readFileSync(bootPath, 'utf8')

@@ -40,3 +40,4 @@ crates/codegen/xai-grok-update/src/auto_update.rs
 crates/codegen/xai-grok-shell/src/util/grok_auth_credentials.rs
 crates/codegen/xai-grok-shell/src/auth/credential_provider.rs
 crates/codegen/xai-grok-shell/src/auth/manager/enrichment.rs
+crates/codegen/xai-grok-agent/templates/prompt.md
