@@ -313,7 +313,10 @@ describe('sisu commands', () => {
 
   it('formatCliReleaseStatus reports package version and pager stamp', () => {
     expect(formatCliReleaseStatus('0.3.3', '0.3.3')).toBe('cli 0.3.3\npager 0.3.3')
-    expect(formatCliReleaseStatus('0.3.3', '')).toBe('cli 0.3.3\npager none')
+    expect(formatCliReleaseStatus('0.3.3', '')).toBe('cli 0.3.3\npager none\npager behind — run sisu update')
+    expect(formatCliReleaseStatus('0.3.8', '0.3.6')).toBe(
+      'cli 0.3.8\npager 0.3.6\npager behind — run sisu update',
+    )
   })
 
   it('shows live quota after login', async () => {

@@ -28,14 +28,18 @@ import {
   writeSession,
 } from './store'
 import { SISU_CLIENT_VERSION } from './client'
-import { installedPagerStamp } from './runtime/launch'
+import { comparePagerStamp, installedPagerStamp } from './runtime/launch'
 
 /** Host + pager stamp for `sisu status`. Shipped reporter — tests drive this. */
 export function formatCliReleaseStatus(
   version = SISU_CLIENT_VERSION,
   pagerStamp = installedPagerStamp(),
 ): string {
-  return [`cli ${version}`, `pager ${pagerStamp || 'none'}`].join('\n')
+  const lines = [`cli ${version}`, `pager ${pagerStamp || 'none'}`]
+  if (!pagerStamp || comparePagerStamp(pagerStamp, version) < 0) {
+    lines.push('pager behind — run sisu update')
+  }
+  return lines.join('\n')
 }
 
 export interface LoginInput {
