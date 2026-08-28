@@ -449,6 +449,9 @@ pub(crate) fn method_id_after_cached_token_unavailable(
     has_external_api_key: bool,
     preferred_method: Option<PreferredAuthMethod>,
 ) -> Option<&'static str> {
+    if crate::sisu_access_point::active() {
+        return None;
+    }
     match preferred_method {
         Some(PreferredAuthMethod::Oidc) | Some(PreferredAuthMethod::ApiKey) => None,
         None => Some(if has_external_api_key {
@@ -529,6 +532,7 @@ mod tests {
     use crate::agent::config::{Config, resolve_model_list};
     use agent_client_protocol as acp;
     use serial_test::serial;
+    use xai_grok_test_support::EnvGuard;
 
     /// When API-key credentials are advertiseable, fall through from a dead
     /// `cached_token` to non-interactive `xai.api_key` (not browser OAuth).
@@ -550,6 +554,20 @@ mod tests {
         assert_eq!(
             method_id_after_cached_token_unavailable(false, None),
             Some(GROK_COM_METHOD_ID),
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn access_point_never_falls_through_to_grok_com() {
+        let _ap = EnvGuard::set("SISU_ACCESS_POINT", "1");
+        assert_eq!(
+            method_id_after_cached_token_unavailable(false, None),
+            None,
+        );
+        assert_eq!(
+            method_id_after_cached_token_unavailable(true, None),
+            None,
         );
     }
 
@@ -595,8 +613,6 @@ mod tests {
             "unknown-method"
         )));
     }
-
-    use xai_grok_test_support::EnvGuard;
 
     // ── Helpers ─────────────────────────────────────────────────────────
 

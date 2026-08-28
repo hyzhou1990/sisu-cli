@@ -162,6 +162,10 @@ it('B-lite contract: no SISU_HOME on child, engine home, overwritten XAI_API_KEY
     expect(env.GROK_MODELS_LIST_URL).toBe('https://www.sisu.chat/api/runtime/v1/models')
     expect(env.GROK_CHANGELOG_OFFLINE).toBe('1')
     expect(env.SISU_TOKEN).toBeUndefined()
+    const grokAuth = JSON.parse(String(env.GROK_AUTH || '{}')) as { key?: string; auth_mode?: string }
+    expect(grokAuth.key).toBe('jwt')
+    expect(grokAuth.auth_mode).toBe('api_key')
+    expect(String(env.GROK_AUTH)).not.toMatch(/auth\.x\.ai|accounts\.x\.ai|grok\.com/)
     expect(fs.existsSync(path.join(home, 'auth.json'))).toBe(true)
     expect(JSON.parse(fs.readFileSync(path.join(home, 'auth.json'), 'utf8')).token).toBe('jwt')
   } finally {
@@ -213,6 +217,8 @@ it('B-full unsets XAI_API_KEY and sets SISU_TOKEN once pager stamp matches', () 
     expect(env.GROK_CODE_XAI_API_KEY).toBeUndefined()
     expect(env.SISU_CONVERSATION_ID).toMatch(/^[0-9a-f-]{36}$/i)
     expect(env.SISU_ACCESS_POINT).toBe('1')
+    expect(JSON.parse(String(env.GROK_AUTH)).auth_mode).toBe('api_key')
+    expect(JSON.parse(String(env.GROK_AUTH)).key).toBe('jwt')
   } finally {
     if (previous.home === undefined) delete process.env.SISU_HOME
     else process.env.SISU_HOME = previous.home

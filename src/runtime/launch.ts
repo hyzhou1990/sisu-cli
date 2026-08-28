@@ -177,6 +177,19 @@ export function sisuGrokBuildEnv(): NodeJS.ProcessEnv {
   } else {
     env.XAI_API_KEY = auth?.token || ''
   }
+  // grok-build's cached_token path reads GROK_AUTH / GROK_HOME auth.json.
+  // Without a disk session it falls through to accounts.x.ai. Seed an ApiKey
+  // snapshot of the SiSu JWT so the pager never starts grok.com OAuth.
+  delete env.GROK_AUTH
+  if (auth?.token) {
+    env.GROK_AUTH = JSON.stringify({
+      key: auth.token,
+      auth_mode: 'api_key',
+      create_time: new Date().toISOString(),
+      user_id: auth.user_id || 'sisu',
+      email: auth.email || undefined,
+    })
+  }
   return {
     ...env,
     SISU_ACCESS_POINT: '1',

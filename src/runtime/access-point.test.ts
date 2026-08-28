@@ -104,6 +104,10 @@ function assertHostContract(env: NodeJS.ProcessEnv, home: string, apiBase: strin
     expect(env.XAI_API_KEY).toBe('sisu-jwt-acceptance')
     expect(env.SISU_TOKEN).toBeUndefined()
   }
+  const grokAuth = JSON.parse(String(env.GROK_AUTH || '{}')) as { key?: string; auth_mode?: string }
+  expect(grokAuth.key).toBe('sisu-jwt-acceptance')
+  expect(grokAuth.auth_mode).toBe('api_key')
+  expect(String(env.GROK_AUTH || '')).not.toMatch(/auth\.x\.ai|accounts\.x\.ai|grok\.com/)
 }
 
 it('host contract twice: SiSu account, no SISU_HOME on child, no grok-4.6 default', async () => {
