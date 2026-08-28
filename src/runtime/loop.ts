@@ -31,7 +31,10 @@ export async function* runLocalTurn(options: RunLocalTurnOptions): AsyncGenerato
   for (let round = 0; round < maxRounds; round += 1) {
     const request: ModelRequest = { model: options.model, messages: messages.map((row) => ({ ...row })), tools }
     requests.push(request)
-    const completion = await options.client.complete(request)
+    let completion = await options.client.complete(request)
+    if (!completion.text && !completion.tool_calls.length) {
+      completion = await options.client.complete(request)
+    }
     if (completion.text) {
       text += completion.text
       yield { type: 'text', text: completion.text }

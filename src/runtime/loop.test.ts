@@ -93,3 +93,23 @@ it('collectLocalTurn returns the same shipped-loop result', async () => {
   expect(result.text).toBe('note says alpha')
   fs.rmSync(cwd, { recursive: true, force: true })
 })
+
+it('retries a billed complete that returns neither text nor tool calls', async () => {
+  const cwd = makeWorkspace()
+  let rounds = 0
+  const result = await collectLocalTurn({
+    prompt: 'ping',
+    cwd,
+    model: 'stub',
+    client: {
+      async complete() {
+        rounds += 1
+        if (rounds === 1) return { text: '', tool_calls: [] }
+        return { text: 'pong', tool_calls: [] }
+      },
+    },
+  })
+  expect(rounds).toBe(2)
+  expect(result.text).toBe('pong')
+  fs.rmSync(cwd, { recursive: true, force: true })
+})

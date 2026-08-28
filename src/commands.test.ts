@@ -381,7 +381,6 @@ describe('sisu commands', () => {
 
     const other = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-ls-b-'))
     openCommand('proj-other', other)
-    writeSession({ ...readSession(), last_project_id: undefined })
     const listed = listLocalCommand()
     expect(listed).toContain('proj-ls')
     expect(listed).toContain(repo)

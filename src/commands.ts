@@ -306,8 +306,9 @@ function formatDirListing(bound: { projectId: string; path: string }): string {
 export function listLocalCommand(projectId?: string): string {
   requireAuth()
   const workspaces = readWorkspaces()
-  const requested = (projectId || readSession().last_project_id || '').trim()
-  if (requested && workspaces[requested]) {
+  const requested = (projectId || '').trim()
+  if (requested) {
+    if (!workspaces[requested]) throw new Error(`unknown workspace ${requested}`)
     return formatDirListing({ projectId: requested, path: workspaces[requested] })
   }
   const entries = Object.entries(workspaces)
