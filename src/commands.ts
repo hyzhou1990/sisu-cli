@@ -3,7 +3,6 @@ import fs from 'fs'
 import path from 'path'
 import { defaultHttp, errorDetail, HttpClient, authHeaders } from './http'
 import { SisuClientKind } from './client'
-import { createSisuCloudModel } from './runtime/adapter'
 import { createLaunchStubModel } from './runtime/loop'
 import {
   fetchModelCatalog,
@@ -294,9 +293,7 @@ export function resolveBoundWorkspace(projectId?: string): { projectId: string; 
   throw new Error('multiple workspaces — pass --project')
 }
 
-export function listLocalCommand(projectId?: string): string {
-  requireAuth()
-  const bound = resolveBoundWorkspace(projectId)
+function formatDirListing(bound: { projectId: string; path: string }): string {
   const names = fs.readdirSync(bound.path).filter((name) => !name.startsWith('.'))
   if (!names.length) return `${bound.path} (empty)`
   return names.map((name) => {
@@ -304,6 +301,19 @@ export function listLocalCommand(projectId?: string): string {
     const suffix = fs.statSync(full).isDirectory() ? '/' : ''
     return `${name}${suffix}`
   }).join('\n')
+}
+
+export function listLocalCommand(projectId?: string): string {
+  requireAuth()
+  const workspaces = readWorkspaces()
+  const requested = (projectId || readSession().last_project_id || '').trim()
+  if (requested && workspaces[requested]) {
+    return formatDirListing({ projectId: requested, path: workspaces[requested] })
+  }
+  const entries = Object.entries(workspaces)
+  if (!entries.length) throw new Error('no local workspace — run sisu open <dir> --project <id>')
+  if (entries.length === 1) return formatDirListing({ projectId: entries[0][0], path: entries[0][1] })
+  return entries.map(([id, dir]) => `${id}  ${dir}`).join('\n')
 }
 
 export async function execCommand(
@@ -324,17 +334,8 @@ export async function execCommand(
   if (!text) throw new Error('prompt is required')
   const stub = Boolean(options.stub || process.env.SISU_RUNTIME_STUB === '1')
   const cwd = options.cwd || process.cwd()
-  const modelClient = options.modelClient || (stub
-    ? createLaunchStubModel()
-    : (() => {
-      const auth = requireAuth()
-      return createSisuCloudModel(http, {
-        apiBase: auth.api_base,
-        token: auth.token,
-        client: options.client || 'cli',
-      })
-    })())
   if (!stub) requireAuth()
+  const modelClient = options.modelClient || (stub ? createLaunchStubModel() : undefined)
   if (options.projectId) {
     writeSession({ ...readSession(), last_project_id: options.projectId })
   }
@@ -353,24 +354,44 @@ export async function execCommand(
 
 export async function listConversationsCommand(http: HttpClient = defaultHttp): Promise<string> {
   const auth = requireAuth()
-  const response = await http(`${auth.api_base}/api/chat/conversations?limit=30`, {
+  const response = await http(`${auth.api_base}/api/chat/conversations?source=cli&limit=30`, {
     headers: authHeaders(auth.token),
   })
   const body = await response.json().catch(() => [])
   if (!response.ok) throw new Error(errorDetail(body, `history failed (${response.status})`))
   const rows = Array.isArray(body) ? body : []
   if (!rows.length) return 'no saved conversations'
-  return rows.map((row: { id?: string; title?: string; client?: string; last_activity_at?: string }) => {
-    const client = row.client ? ` [${row.client}]` : ''
-    return `${row.id}  ${row.title || '(untitled)'}${client}`
+  return rows.map((row: { id?: string; title?: string; source?: string; client?: string }) => {
+    const tag = row.source || row.client
+    const suffix = tag ? ` [${tag}]` : ''
+    return `${row.id}  ${row.title || '(untitled)'}${suffix}`
   }).join('\n')
 }
 
-export function openConversationCommand(conversationId: string): string {
+export async function openConversationCommand(
+  conversationId: string,
+  http: HttpClient = defaultHttp,
+): Promise<string> {
   const id = conversationId.trim()
   if (!id) throw new Error('conversation id is required')
   writeSession({ ...readSession(), last_conversation_id: id })
-  return `opened ${id}`
+  const auth = requireAuth()
+  const response = await http(`${auth.api_base}/api/chat/conversations/${id}`, {
+    headers: authHeaders(auth.token),
+  })
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(errorDetail(body, `thread failed (${response.status})`))
+  const messages = Array.isArray(body.messages) ? body.messages : []
+  const lines = [`opened ${id}`]
+  if (body.title) lines.push(String(body.title))
+  for (const msg of messages) {
+    const role = String(msg?.role || '').trim()
+    const content = String(msg?.content || '').trim()
+    if (!role || !content) continue
+    lines.push(`${role}: ${content}`)
+  }
+  if (lines.length === 1) lines.push('(no messages)')
+  return lines.join('\n')
 }
 
 export async function setTrainingCommand(optIn: boolean, http: HttpClient = defaultHttp): Promise<string> {

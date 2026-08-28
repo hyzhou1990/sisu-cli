@@ -195,3 +195,52 @@ it('help lists sisu update', () => {
   expect(helpText()).not.toMatch(/\/api\/chat\/models/)
   expect(helpText()).not.toMatch(/grok login|grok OAuth|auth\.x\.ai/i)
 })
+
+it('runCli -p with empty model text exits 1 and writes stderr', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-main-'))
+  const previous = process.env.SISU_HOME
+  process.env.SISU_HOME = home
+  const { writeAuth } = require('./store') as typeof import('./store')
+  writeAuth({ token: 'jwt', email: 'ada@example.com', user_id: 'u1', api_base: 'https://www.sisu.chat' })
+  const stdout: string[] = []
+  const stderr: string[] = []
+  const out = jest.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+    stdout.push(String(chunk))
+    return true
+  })
+  const err = jest.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+    stderr.push(String(chunk))
+    return true
+  })
+  const http = jest.fn(async (url: string) => {
+    if (String(url).includes('/api/runtime/v1/models')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          default_model: 'sisu-lite',
+          data: [{ id: 'sisu-lite', name: 'SiSu-Lite', owned_by: 'sisu' }],
+        }),
+        text: async () => '',
+      }
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+      text: async () => 'event: text\ndata: ""\n\n',
+    }
+  })
+  try {
+    const code = await runCli(['-p', 'say hello', '--new'], { http })
+    expect(code).toBe(1)
+    expect(stdout.join('').trim()).toBe('')
+    expect(stderr.join('')).toMatch(/no model text/)
+  } finally {
+    out.mockRestore()
+    err.mockRestore()
+    if (previous === undefined) delete process.env.SISU_HOME
+    else process.env.SISU_HOME = previous
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})

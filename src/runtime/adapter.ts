@@ -43,10 +43,10 @@ export function openaiCompatUrl(apiBase: string): string {
   return `${apiBase.replace(/\/+$/, '')}${OPENAI_COMPAT_PATH}`
 }
 
-export function completeHeaders(token: string): Record<string, string> {
+export function completeHeaders(token: string, conversationId?: string): Record<string, string> {
   return {
     ...authHeaders(token),
-    'x-sisu-conversation-id': ensureConversationId(),
+    'x-sisu-conversation-id': conversationId || ensureConversationId(),
   }
 }
 
@@ -138,7 +138,7 @@ export function parseOpenAiChatCompletion(body: unknown): ModelCompletion {
 
 export function createSisuCloudModel(
   http: HttpClient,
-  options: { apiBase: string; token: string; client?: SisuClientKind },
+  options: { apiBase: string; token: string; client?: SisuClientKind; conversationId?: string },
 ): ModelClient {
   return {
     async complete(request) {
@@ -148,7 +148,7 @@ export function createSisuCloudModel(
       }
       const sent = await http(completeUrl(options.apiBase), {
         method: 'POST',
-        headers: completeHeaders(options.token),
+        headers: completeHeaders(options.token, options.conversationId),
         body: JSON.stringify(payload),
       })
       if (!sent.ok) {

@@ -21,9 +21,9 @@ function sessionFile(id: string): string {
   return path.join(sessionsDir(), `${id}.json`)
 }
 
-export function createLocalSession(title: string, cwd: string, model?: string): LocalSession {
+export function createLocalSession(title: string, cwd: string, model?: string, id?: string): LocalSession {
   const session: LocalSession = {
-    id: randomUUID(),
+    id: id || randomUUID(),
     title: title.slice(0, 80) || 'session',
     cwd,
     model,

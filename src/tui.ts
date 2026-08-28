@@ -450,7 +450,7 @@ export async function runTui(
     }
     if (raw.startsWith('/open ')) {
       try {
-        io.write(`${openThread(raw.slice(6).trim())}\n`)
+        io.write(`${await openThread(raw.slice(6).trim(), http)}\n`)
         newConversation = false
       } catch (error) {
         io.write(`${error instanceof Error ? error.message : String(error)}\n`)

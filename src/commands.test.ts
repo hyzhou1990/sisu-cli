@@ -379,6 +379,18 @@ describe('sisu commands', () => {
     expect(listing).toContain('main.py')
     expect(listing).toContain('src/')
 
+    const other = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-ls-b-'))
+    openCommand('proj-other', other)
+    writeSession({ ...readSession(), last_project_id: undefined })
+    const listed = listLocalCommand()
+    expect(listed).toContain('proj-ls')
+    expect(listed).toContain(repo)
+    expect(listed).toContain('proj-other')
+    expect(listed).toContain(other)
+    expect(listed).not.toMatch(/multiple workspaces/)
+    expect(listLocalCommand('proj-ls')).toContain('main.py')
+
+    fs.rmSync(other, { recursive: true, force: true })
     fs.rmSync(repo, { recursive: true, force: true })
     fs.rmSync(home, { recursive: true, force: true })
   })
@@ -412,9 +424,10 @@ describe('sisu commands', () => {
     expect(result.conversationId).toBeTruthy()
     expect(http.mock.calls.map((row) => row[0])).toContain('https://www.sisu.chat/api/runtime/v1/models')
     const completeCall = http.mock.calls.find((row) => String(row[0]).includes('/api/runtime/complete')) as
-      | [string, { body?: string }?]
+      | [string, { body?: string; headers?: Record<string, string> }?]
       | undefined
     expect(completeCall?.[0]).toBe('https://www.sisu.chat/api/runtime/complete')
+    expect(completeCall?.[1]?.headers?.['x-sisu-conversation-id']).toBe(result.conversationId)
     const body = JSON.parse(String(completeCall?.[1]?.body || '{}'))
     expect(body.model).toBe('sisu-lite')
     expect(body.model).not.toBe('sisu-default')
@@ -467,14 +480,39 @@ describe('sisu commands', () => {
     const home = makeHome()
     process.env.SISU_HOME = home
     writeAuth({ token: 'jwt-token', email: 'ada@example.com', user_id: 'u1', api_base: 'https://www.sisu.chat' })
-    const http = jest.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => [{ id: 'conv-9', title: 'prior', client: 'tui' }],
-      text: async () => '',
+    const http = jest.fn(async (url: string) => {
+      if (String(url).includes('/api/chat/conversations?source=cli')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [{ id: 'conv-9', title: 'prior', source: 'cli' }],
+          text: async () => '',
+        }
+      }
+      if (String(url).includes('/api/chat/conversations/conv-9')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: 'conv-9',
+            title: 'prior',
+            messages: [
+              { role: 'user', content: 'hello' },
+              { role: 'assistant', content: 'world' },
+            ],
+          }),
+          text: async () => '',
+        }
+      }
+      return { ok: false, status: 500, json: async () => ({}), text: async () => '' }
     })
-    expect(await listConversationsCommand(http)).toContain('conv-9  prior [tui]')
-    expect(openConversationCommand('conv-9')).toBe('opened conv-9')
+    expect(await listConversationsCommand(http)).toContain('conv-9  prior [cli]')
+    expect(http.mock.calls[0][0]).toBe('https://www.sisu.chat/api/chat/conversations?source=cli&limit=30')
+    const thread = await openConversationCommand('conv-9', http)
+    expect(thread).toContain('opened conv-9')
+    expect(thread).toContain('user: hello')
+    expect(thread).toContain('assistant: world')
+    expect(readSession().last_conversation_id).toBe('conv-9')
     fs.rmSync(home, { recursive: true, force: true })
   })
 })

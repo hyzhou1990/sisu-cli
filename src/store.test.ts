@@ -1,7 +1,7 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { bindWorkspace, clearAuth, describeStatus, getSisuHome, readAuth, writeAuth } from './store'
+import { bindWorkspace, clearAuth, describeStatus, getSisuHome, readAuth, readWorkspaces, writeAuth } from './store'
 
 function makeHome(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-home-'))
@@ -87,6 +87,26 @@ describe('sisu store', () => {
     expect(fs.existsSync(path.join(repo, 'missing'))).toBe(false)
 
     fs.rmSync(repo, { recursive: true, force: true })
+    fs.rmSync(home, { recursive: true, force: true })
+  })
+
+  it('prunes vanished workspace directories from the registry', () => {
+    const home = makeHome()
+    process.env.SISU_HOME = home
+    const live = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-live-'))
+    const gone = path.join(os.tmpdir(), `sisu-gone-${Date.now()}`)
+    bindWorkspace('keep', live)
+    fs.writeFileSync(
+      path.join(home, 'workspace-paths.json'),
+      JSON.stringify({ keep: fs.realpathSync.native(live), gone }, null, 2) + '\n',
+    )
+    const map = readWorkspaces()
+    expect(map.keep).toBe(fs.realpathSync.native(live))
+    expect(map.gone).toBeUndefined()
+    const saved = JSON.parse(fs.readFileSync(path.join(home, 'workspace-paths.json'), 'utf8'))
+    expect(saved.gone).toBeUndefined()
+    expect(saved.keep).toBe(map.keep)
+    fs.rmSync(live, { recursive: true, force: true })
     fs.rmSync(home, { recursive: true, force: true })
   })
 })

@@ -106,7 +106,7 @@ describe('sisu tui', () => {
   it('lists and opens saved cloud conversations', async () => {
     const { io, written } = scriptedIo(['/history', '/open conv-99', '/quit'])
     const history = jest.fn().mockResolvedValue('conv-99  prior turn [tui]')
-    const openThread = jest.fn().mockReturnValue('opened conv-99')
+    const openThread = jest.fn().mockResolvedValue('opened conv-99')
     const code = await runTui(io, {
       auth: () => ({ token: 't', email: 'a@b.c', user_id: 'u', api_base: 'https://www.sisu.chat' }),
       status: async () => 'user a@b.c',
@@ -120,7 +120,7 @@ describe('sisu tui', () => {
     })
     expect(code).toBe(0)
     expect(history).toHaveBeenCalled()
-    expect(openThread).toHaveBeenCalledWith('conv-99')
+    expect(openThread).toHaveBeenCalledWith('conv-99', expect.anything())
     expect(written.join('')).toContain('opened conv-99')
   })
 

@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import type { HttpClient } from '../http'
 import type { CloudMessage } from '../pager/history'
 import { readSession, requireAuth, writeSession } from '../store'
@@ -19,11 +20,13 @@ export function createLocalRuntimeTransport(
       let conversationId = sendOptions.conversationId || (!sendOptions.newConversation ? readSession().last_conversation_id : '') || ''
       let existing = conversationId ? loadLocalSession(conversationId) : null
       if (!existing || sendOptions.newConversation) {
-        existing = createLocalSession(prompt.trim().slice(0, 50), cwd, readSession().last_model)
-        conversationId = existing.id
+        conversationId = randomUUID()
+        writeSession({ ...readSession(), last_conversation_id: conversationId })
+        existing = createLocalSession(prompt.trim().slice(0, 50), cwd, readSession().last_model, conversationId)
+      } else {
+        writeSession({ ...readSession(), last_conversation_id: conversationId })
       }
-      writeSession({ ...readSession(), last_conversation_id: conversationId })
-      const client = options.modelClient || cloudClient(http, options.client || 'tui')
+      const client = options.modelClient || cloudClient(http, options.client || 'tui', conversationId)
       const model = options.modelClient
         ? existing.model || readSession().last_model || 'stub'
         : await resolveRuntimeModel(http, { explicit: existing.model || readSession().last_model })
@@ -80,12 +83,15 @@ export async function execLocalTurn(
 ): Promise<{ conversationId: string; text: string; toolResults: import('./types').ToolResult[] }> {
   const cwd = resolveWorkspaceRoot(options.cwd)
   let conversationId = options.conversationId || (!options.newConversation ? readSession().last_conversation_id : '') || ''
+  if (options.newConversation || !conversationId) {
+    conversationId = randomUUID()
+    writeSession({ ...readSession(), last_conversation_id: conversationId })
+  }
   let existing = conversationId ? loadLocalSession(conversationId) : null
   if (!existing) {
-    existing = createLocalSession(prompt.trim().slice(0, 50), cwd, options.model)
-    conversationId = existing.id
+    existing = createLocalSession(prompt.trim().slice(0, 50), cwd, options.model, conversationId)
   }
-  const client = options.modelClient || (options.http ? cloudClient(options.http, options.client || 'cli') : undefined)
+  const client = options.modelClient || (options.http ? cloudClient(options.http, options.client || 'cli', conversationId) : undefined)
   if (!client) throw new Error('model client required')
   const result = await collectLocalTurn({
     prompt,
@@ -102,7 +108,12 @@ export async function execLocalTurn(
   return { conversationId: result.conversationId, text: result.text, toolResults: result.toolResults }
 }
 
-function cloudClient(http: HttpClient, client: 'tui' | 'cli'): ModelClient {
+function cloudClient(http: HttpClient, client: 'tui' | 'cli', conversationId?: string): ModelClient {
   const auth = requireAuth()
-  return createSisuCloudModel(http, { apiBase: auth.api_base, token: auth.token, client })
+  return createSisuCloudModel(http, {
+    apiBase: auth.api_base,
+    token: auth.token,
+    client,
+    conversationId,
+  })
 }

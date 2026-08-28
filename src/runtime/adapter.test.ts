@@ -182,6 +182,36 @@ it('follow-up complete after a tool result uses OpenAI function tool_calls', asy
   }
 })
 
+it('complete request headers use the explicit conversation id over session', async () => {
+  const { restore } = withSisuHome()
+  const sessionId = '11111111-1111-1111-1111-111111111111'
+  const explicitId = '22222222-2222-2222-2222-222222222222'
+  try {
+    writeSession({ last_conversation_id: sessionId })
+    const seen: Array<{ headers: Record<string, string> }> = []
+    const http = jest.fn(async (_url: string, init?: { headers?: Record<string, string> }) => {
+      seen.push({ headers: { ...(init?.headers || {}) } })
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({}),
+        text: async () => 'event: text\ndata: "ok"\n\n',
+      }
+    })
+    const model = createSisuCloudModel(http as unknown as HttpClient, {
+      apiBase: 'https://www.sisu.chat',
+      token: 'jwt',
+      client: 'cli',
+      conversationId: explicitId,
+    })
+    await model.complete(request)
+    expect(seen[0].headers['x-sisu-conversation-id']).toBe(explicitId)
+    expect(seen[0].headers['x-sisu-conversation-id']).not.toBe(sessionId)
+  } finally {
+    restore()
+  }
+})
+
 it('complete request headers include x-sisu-conversation-id from session', async () => {
   const { restore } = withSisuHome()
   const conversationId = '11111111-1111-1111-1111-111111111111'

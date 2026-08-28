@@ -193,17 +193,21 @@ export async function runCli(
       model: parsed.flags['--model'],
       newConversation: parsed.switches.has('new'),
       stub: parsed.switches.has('stub') || process.env.SISU_RUNTIME_STUB === '1',
-    })
-    if (result.text) process.stdout.write(`${result.text}\n`)
-    return 0
+    }, http)
+    if (result.text.trim()) {
+      process.stdout.write(`${result.text}\n`)
+      return 0
+    }
+    process.stderr.write('no model text\n')
+    return 1
   }
   if (command === 'history') {
-    process.stdout.write(`${await listConversationsCommand(defaultHttp)}\n`)
+    process.stdout.write(`${await listConversationsCommand(http)}\n`)
     return 0
   }
   if (command === 'thread') {
     const id = args.find((item) => !item.startsWith('--')) || ''
-    process.stdout.write(`${openConversationCommand(id)}\n`)
+    process.stdout.write(`${await openConversationCommand(id, http)}\n`)
     return 0
   }
   if (command === 'models') {

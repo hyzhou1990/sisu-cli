@@ -140,7 +140,18 @@ export function clearAuth(): void {
 
 export function readWorkspaces(): Record<string, string> {
   const raw = readJson<Record<string, string>>(workspacePath(), {})
-  return raw && typeof raw === 'object' ? raw : {}
+  if (!raw || typeof raw !== 'object') return {}
+  const kept: Record<string, string> = {}
+  let dirty = false
+  for (const [id, dir] of Object.entries(raw)) {
+    if (typeof dir === 'string' && dir && fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
+      kept[id] = dir
+    } else {
+      dirty = true
+    }
+  }
+  if (dirty) writeJson(workspacePath(), kept)
+  return kept
 }
 
 export function bindWorkspace(projectId: string, requestedPath: string): { projectId: string; path: string } {
