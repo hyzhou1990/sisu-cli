@@ -15,6 +15,13 @@ it('overlay system prompt is SiSu, not Grok released by xAI', () => {
   expect(promptTpl).not.toMatch(/released by xAI/)
   expect(promptTpl).not.toMatch(/Grok Build TUI/)
   expect(promptTpl.startsWith('You are ${{ system_prompt_label }}')).toBe(true)
+  const flowRs = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'overlays', 'grok-build', 'crates', 'codegen', 'xai-grok-shell', 'src', 'auth', 'flow.rs'),
+    'utf8',
+  )
+  expect(flowRs).toContain('sisu_access_point::active()')
+  expect(flowRs).toContain('Run `sisu login`.')
+  expect(flowRs).toMatch(/if crate::sisu_access_point::active\(\) \{\s*return true;/)
 })
 
 it('vendors the grok-build suite plus Apache NOTICE/LICENSE', () => {

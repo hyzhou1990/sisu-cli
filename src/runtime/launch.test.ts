@@ -9,6 +9,7 @@ import {
   assertRuntimeAvailable,
   migrateGrokScratchToEngine,
   purgeChangelogCache,
+  purgeXaiEngineAuth,
   RuntimeUnavailable,
   pagerStampAllowsSpawn,
   sisuGrokBuildEnv,
@@ -129,6 +130,41 @@ it('sisuGrokBuildEnv points grok-build at SiSu via GROK_XAI_API_BASE_URL', () =>
       expect(boot).toMatch(/GROK_XAI_API_BASE_URL/)
       expect(boot).toMatch(/api\/runtime\/v1/)
     }
+  } finally {
+    if (previousHome === undefined) delete process.env.SISU_HOME
+    else process.env.SISU_HOME = previousHome
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('purges xAI OAuth leftovers from engine auth.json', () => {
+  const previousHome = process.env.SISU_HOME
+  const home = makeHome()
+  const engine = path.join(home, 'engine')
+  fs.mkdirSync(engine, { recursive: true })
+  const file = path.join(engine, 'auth.json')
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      'https://auth.x.ai::deadbeef': {
+        auth_mode: 'oidc',
+        key: 'xai-session',
+        oidc_issuer: 'https://auth.x.ai',
+        refresh_token: 'refresh',
+      },
+    }),
+  )
+  try {
+    purgeXaiEngineAuth(engine)
+    expect(fs.readFileSync(file, 'utf8').trim()).toBe('{}')
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        'https://auth.x.ai::again': { auth_mode: 'oidc', key: 'xai-session' },
+      }),
+    )
+    sisuGrokBuildEnv()
+    expect(fs.readFileSync(file, 'utf8')).not.toMatch(/auth\.x\.ai/)
   } finally {
     if (previousHome === undefined) delete process.env.SISU_HOME
     else process.env.SISU_HOME = previousHome

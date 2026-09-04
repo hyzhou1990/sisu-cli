@@ -60,10 +60,25 @@ export function sisuRuntimeApiBase(apiBase: string): string {
   return openaiCompatUrl(apiBase).replace(/\/chat\/completions$/, '')
 }
 
+/** Drop leftover grok.com / auth.x.ai sessions from the pager engine store. */
+export function purgeXaiEngineAuth(engine = sisuEngineHome()): string {
+  const file = path.join(engine, 'auth.json')
+  if (!fs.existsSync(file)) return file
+  try {
+    const raw = fs.readFileSync(file, 'utf8')
+    if (!/auth\.x\.ai|accounts\.x\.ai|grok\.com/i.test(raw)) return file
+    fs.writeFileSync(file, '{}\n', { encoding: 'utf8', mode: 0o600 })
+  } catch {
+    // missing / busy — next launch retries
+  }
+  return file
+}
+
 export function writeSisuGrokConfig(): string {
   const auth = readAuth()
   const engine = sisuEngineHome()
   fs.mkdirSync(engine, { recursive: true, mode: 0o700 })
+  purgeXaiEngineAuth(engine)
   const file = path.join(engine, 'config.toml')
   const runtimeBase = sisuRuntimeApiBase(auth?.api_base || process.env.SISU_API_BASE || DEFAULT_API_BASE)
   const body = [
@@ -193,6 +208,7 @@ export function sisuGrokBuildEnv(): NodeJS.ProcessEnv {
       email: auth.email || undefined,
     })
   }
+  purgeXaiEngineAuth(engine)
   return {
     ...env,
     SISU_ACCESS_POINT: '1',

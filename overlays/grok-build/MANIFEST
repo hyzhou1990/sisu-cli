@@ -9,6 +9,7 @@ crates/codegen/xai-grok-shell/src/agent/models/resolution.rs
 crates/codegen/xai-grok-shell/src/agent/models/tests.rs
 crates/codegen/xai-grok-shell/src/auth/api_key_probe.rs
 crates/codegen/xai-grok-shell/src/auth/storage.rs
+crates/codegen/xai-grok-shell/src/auth/flow.rs
 crates/codegen/xai-grok-shell/src/remote/client.rs
 crates/codegen/xai-grok-shell/src/remote/client_tests.rs
 crates/codegen/xai-grok-shell/src/session/acp_session_tests/auth_error_no_retry_tests.rs
