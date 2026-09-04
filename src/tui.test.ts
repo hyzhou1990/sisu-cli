@@ -217,4 +217,40 @@ describe('sisu tui', () => {
     expect(written.join('')).toMatch(/session already saved/)
     expect(pager).toHaveBeenCalled()
   })
+
+  it('does not mint a second device login after the startup browser login', async () => {
+    const { io, written } = scriptedIo([])
+    let session: { token: string; email: string; user_id: string; api_base: string } | null = null
+    const webLogin = jest.fn(async () => {
+      session = {
+        token: 'jwt',
+        email: 'ada@sisu.chat',
+        user_id: 'u1',
+        api_base: 'https://www.sisu.chat',
+      }
+      return 'ada@sisu.chat'
+    })
+    const spawnGrokPager = jest.fn().mockResolvedValue(10)
+    const pager = jest.fn().mockResolvedValue(0)
+    const http = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, complete: true, models: true }),
+    })
+    const code = await runTui(io, {
+      auth: () => session,
+      webLogin,
+      spawnGrokPager,
+      pager,
+      http,
+      animate: false,
+      color: false,
+      columns: 80,
+    })
+    expect(code).toBe(0)
+    expect(webLogin).toHaveBeenCalledTimes(1)
+    expect(spawnGrokPager).toHaveBeenCalledTimes(1)
+    expect(written.join('')).toMatch(/session already saved/)
+    expect(pager).toHaveBeenCalled()
+  })
 })

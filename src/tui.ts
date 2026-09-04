@@ -64,6 +64,11 @@ function shouldUsePager(deps: Partial<TuiDeps>, env: NodeJS.ProcessEnv = process
   return Boolean(process.stdout.isTTY)
 }
 
+/** Pager may leave the alt screen / hide the cursor when it exits 10. */
+function restoreInteractiveTerminal(io: LineIo): void {
+  io.write('\x1b[?1049l\x1b[?25h\x1b[?2004l\x1b[0m')
+}
+
 export async function playMobiusIntro(
   io: LineIo,
   options: {
@@ -254,7 +259,9 @@ export async function runTui(
   const animate = deps.animate ?? shouldAnimateSplash()
 
   try {
+  let openedBrowserLogin = false
   const startWebLogin = async (notify: (line: string) => void): Promise<string> => {
+    openedBrowserLogin = true
     return webLogin({
       onStart: (info: WebLoginStart) => {
         notify(`Open ${info.verification_uri_complete}`)
@@ -357,13 +364,13 @@ export async function runTui(
       })
 
     if (deps.spawnGrokPager || (findGrokBuildBinary() && process.stdout.isTTY)) {
-      // Login handoff: pager exits 10 → host web login → respawn.
-      // If a session is already on disk, do not mint another device code.
+      // Login handoff: pager exits 10 → host web login at most once → respawn.
       while (true) {
         const code = await spawnOnce()
         if (code === null) break
         if (code !== SISU_LOGIN_EXIT_CODE) return code
-        if (auth()) {
+        restoreInteractiveTerminal(io)
+        if (auth() || openedBrowserLogin) {
           io.write('sisu: session already saved; not opening another login page.\n')
           break
         }
