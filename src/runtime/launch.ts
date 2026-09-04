@@ -168,15 +168,18 @@ export function pagerStampMeetsRelease(
   return comparePagerStamp(stamped, release) >= 0
 }
 
-/** B-full only when the host env flag is on or the installed pager stamp matches this package. */
+/** First pager that speaks the access-point contract. Host patches may ship ahead of a rebuild. */
+export const MIN_PAGER_STAMP = '0.3.11'
+
+/** B-full when the host env flag is on or the installed pager is at least MIN_PAGER_STAMP. */
 export function accessPointBfullEnabled(): boolean {
-  return process.env.SISU_ACCESS_POINT_BFULL === '1' || pagerStampMeetsRelease()
+  return process.env.SISU_ACCESS_POINT_BFULL === '1' || pagerStampMeetsRelease(installedPagerStamp(), MIN_PAGER_STAMP)
 }
 
-/** Installed ~/.sisu/bin pager must be this release; other paths (SISU_GROK_BIN / cargo) are dev. */
+/** Installed ~/.sisu/bin pager must be the access-point contract; other paths (SISU_GROK_BIN / cargo) are dev. */
 export function pagerStampAllowsSpawn(binary: string): boolean {
   if (path.resolve(binary) !== path.resolve(installedPagerPath())) return true
-  return pagerStampMeetsRelease(installedPagerStamp(binary))
+  return pagerStampMeetsRelease(installedPagerStamp(binary), MIN_PAGER_STAMP)
 }
 
 export function sisuGrokBuildEnv(): NodeJS.ProcessEnv {
@@ -189,6 +192,10 @@ export function sisuGrokBuildEnv(): NodeJS.ProcessEnv {
   delete env.GROK_CODE_XAI_API_KEY
   delete env.GROK_DEFAULT_MODEL
   delete env.SISU_TOKEN
+  // Must not set GROK_DISABLE_API_KEY_AUTH: AuthManager.vet_cached hides
+  // auth_mode=api_key snapshots, so the pager thinks there is no session
+  // and exits 10 (host login) in a loop.
+  delete env.GROK_DISABLE_API_KEY_AUTH
   if (accessPointBfullEnabled()) {
     delete env.XAI_API_KEY
     env.SISU_TOKEN = auth?.token || ''
@@ -229,7 +236,6 @@ export function sisuGrokBuildEnv(): NodeJS.ProcessEnv {
     GROK_DISABLE_CLI_CHAT_PROXY: '1',
     GROK_TELEMETRY_ENABLED: '0',
     GROK_CHANGELOG_OFFLINE: '1',
-    GROK_DISABLE_API_KEY_AUTH: '1',
   }
 }
 

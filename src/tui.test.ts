@@ -186,13 +186,11 @@ describe('sisu tui', () => {
     )
   })
 
-  it('respawns after pager exit code 10 by running SiSu login', async () => {
+  it('does not open another browser login when a session already exists', async () => {
     const { io, written } = scriptedIo([])
-    const webLogin = jest.fn().mockResolvedValue('ada@sisu.chat')
-    const spawnGrokPager = jest
-      .fn()
-      .mockResolvedValueOnce(10)
-      .mockResolvedValueOnce(0)
+    const webLogin = jest.fn()
+    const spawnGrokPager = jest.fn().mockResolvedValue(10)
+    const pager = jest.fn().mockResolvedValue(0)
     const http = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -207,14 +205,16 @@ describe('sisu tui', () => {
       }),
       webLogin,
       spawnGrokPager,
+      pager,
       http,
       animate: false,
       color: false,
       columns: 80,
     })
     expect(code).toBe(0)
-    expect(spawnGrokPager).toHaveBeenCalledTimes(2)
-    expect(webLogin).toHaveBeenCalledTimes(1)
-    expect(written.join('')).toMatch(/logged in as ada@sisu\.chat/)
+    expect(spawnGrokPager).toHaveBeenCalledTimes(1)
+    expect(webLogin).not.toHaveBeenCalled()
+    expect(written.join('')).toMatch(/session already saved/)
+    expect(pager).toHaveBeenCalled()
   })
 })

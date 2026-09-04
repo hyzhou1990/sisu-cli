@@ -119,6 +119,7 @@ it('sisuGrokBuildEnv points grok-build at SiSu via GROK_XAI_API_BASE_URL', () =>
     expect(env.GROK_MODELS_BASE_URL).toBe('https://www.sisu.chat/api/runtime/v1')
     expect(env.GROK_CLI_CHAT_PROXY_BASE_URL).not.toContain('grok.com')
     expect(env.GROK_TELEMETRY_ENABLED).toBe('0')
+    expect(env.GROK_DISABLE_API_KEY_AUTH).toBeUndefined()
     const configPath = writeSisuGrokConfig()
     expect(configPath).toBe(path.join(home, 'engine', 'config.toml'))
     expect(fs.readFileSync(configPath, 'utf8')).toContain('xai_api_base_url = "https://www.sisu.chat/api/runtime/v1"')
@@ -231,6 +232,8 @@ it('refuses spawn of an installed pager whose stamp is older than this package',
   try {
     expect(pagerStampAllowsSpawn(dest)).toBe(false)
     expect(pagerStampAllowsSpawn(path.join(home, 'elsewhere', 'xai-grok-pager'))).toBe(true)
+    fs.writeFileSync(`${dest}.version`, '0.3.11\n')
+    expect(pagerStampAllowsSpawn(dest)).toBe(true)
   } finally {
     if (previousHome === undefined) delete process.env.SISU_HOME
     else process.env.SISU_HOME = previousHome

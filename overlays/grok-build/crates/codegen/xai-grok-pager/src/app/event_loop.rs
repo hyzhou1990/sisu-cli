@@ -1294,7 +1294,15 @@ pub(crate) async fn run(
     // Seed auth state from ACP connection metadata.
     // --force-login overrides: show the login screen even when credentials exist.
     let force_login = args.force_login && !connection.auth_methods.is_empty();
-    let needs_interactive_login = connection.needs_login || force_login;
+    let mut needs_interactive_login = connection.needs_login || force_login;
+    // Host already supplied a SiSu session. Auto-Login would quit 10 and
+    // bounce the browser in a loop.
+    if needs_interactive_login
+        && xai_grok_shell::sisu_access_point::active()
+        && xai_grok_shell::sisu_access_point::sisu_token().is_some()
+    {
+        needs_interactive_login = false;
+    }
     if needs_interactive_login {
         app.welcome_prompt_focused = false;
 

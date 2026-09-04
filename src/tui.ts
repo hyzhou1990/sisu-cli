@@ -307,7 +307,7 @@ export async function runTui(
     }
   }
 
-  if (usePager && !deps.pager) {
+  if (usePager && (deps.spawnGrokPager || !deps.pager)) {
     const spawnOnce =
       deps.spawnGrokPager ??
       (() => {
@@ -358,10 +358,15 @@ export async function runTui(
 
     if (deps.spawnGrokPager || (findGrokBuildBinary() && process.stdout.isTTY)) {
       // Login handoff: pager exits 10 → host web login → respawn.
+      // If a session is already on disk, do not mint another device code.
       while (true) {
         const code = await spawnOnce()
         if (code === null) break
         if (code !== SISU_LOGIN_EXIT_CODE) return code
+        if (auth()) {
+          io.write('sisu: session already saved; not opening another login page.\n')
+          break
+        }
         try {
           const email = await startWebLogin((line) => io.write(`${line}\n`))
           io.write(`logged in as ${email}\n`)
