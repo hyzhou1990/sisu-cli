@@ -187,9 +187,11 @@ describe('sisu tui', () => {
   })
 
   it('does not open another browser login when a session already exists', async () => {
-    const { io, written } = scriptedIo([])
+    const { io } = scriptedIo([])
     const webLogin = jest.fn()
-    const spawnGrokPager = jest.fn().mockResolvedValue(10)
+    const spawnGrokPager = jest.fn()
+      .mockResolvedValueOnce(10)
+      .mockResolvedValueOnce(0)
     const pager = jest.fn().mockResolvedValue(0)
     const http = jest.fn().mockResolvedValue({
       ok: true,
@@ -212,14 +214,13 @@ describe('sisu tui', () => {
       columns: 80,
     })
     expect(code).toBe(0)
-    expect(spawnGrokPager).toHaveBeenCalledTimes(1)
+    expect(spawnGrokPager).toHaveBeenCalledTimes(2)
     expect(webLogin).not.toHaveBeenCalled()
-    expect(written.join('')).toMatch(/session already saved/)
-    expect(pager).toHaveBeenCalled()
+    expect(pager).not.toHaveBeenCalled()
   })
 
   it('does not mint a second device login after the startup browser login', async () => {
-    const { io, written } = scriptedIo([])
+    const { io } = scriptedIo([])
     let session: { token: string; email: string; user_id: string; api_base: string } | null = null
     const webLogin = jest.fn(async () => {
       session = {
@@ -230,7 +231,9 @@ describe('sisu tui', () => {
       }
       return 'ada@sisu.chat'
     })
-    const spawnGrokPager = jest.fn().mockResolvedValue(10)
+    const spawnGrokPager = jest.fn()
+      .mockResolvedValueOnce(10)
+      .mockResolvedValueOnce(0)
     const pager = jest.fn().mockResolvedValue(0)
     const http = jest.fn().mockResolvedValue({
       ok: true,
@@ -249,8 +252,67 @@ describe('sisu tui', () => {
     })
     expect(code).toBe(0)
     expect(webLogin).toHaveBeenCalledTimes(1)
-    expect(spawnGrokPager).toHaveBeenCalledTimes(1)
-    expect(written.join('')).toMatch(/session already saved/)
-    expect(pager).toHaveBeenCalled()
+    expect(spawnGrokPager).toHaveBeenCalledTimes(2)
+    expect(pager).not.toHaveBeenCalled()
+  })
+
+  it('stays on grok pager after exit 10 when a session is already saved', async () => {
+    const { io, written } = scriptedIo([])
+    const spawnGrokPager = jest.fn()
+      .mockResolvedValueOnce(10)
+      .mockResolvedValueOnce(0)
+    const pager = jest.fn()
+    const code = await runTui(io, {
+      auth: () => ({
+        token: 'jwt',
+        email: 'ada@sisu.chat',
+        user_id: 'u1',
+        api_base: 'https://www.sisu.chat',
+      }),
+      webLogin: jest.fn(),
+      spawnGrokPager,
+      pager,
+      http: jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, complete: true, models: true }),
+      }),
+      animate: false,
+      color: false,
+      columns: 80,
+    })
+    expect(code).toBe(0)
+    expect(spawnGrokPager).toHaveBeenCalledTimes(2)
+    expect(pager).not.toHaveBeenCalled()
+    expect(written.join('')).not.toMatch(/session already saved/)
+  })
+
+  it('does not fall through to the Node TUI if grok pager keeps exiting 10', async () => {
+    const { io, written } = scriptedIo([])
+    const spawnGrokPager = jest.fn().mockResolvedValue(10)
+    const pager = jest.fn()
+    const code = await runTui(io, {
+      auth: () => ({
+        token: 'jwt',
+        email: 'ada@sisu.chat',
+        user_id: 'u1',
+        api_base: 'https://www.sisu.chat',
+      }),
+      webLogin: jest.fn(),
+      spawnGrokPager,
+      pager,
+      http: jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, complete: true, models: true }),
+      }),
+      animate: false,
+      color: false,
+      columns: 80,
+    })
+    expect(code).toBe(10)
+    expect(spawnGrokPager).toHaveBeenCalledTimes(2)
+    expect(pager).not.toHaveBeenCalled()
+    expect(written.join('')).toMatch(/still requesting login/)
   })
 })

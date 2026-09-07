@@ -364,24 +364,30 @@ export async function runTui(
       })
 
     if (deps.spawnGrokPager || (findGrokBuildBinary() && process.stdout.isTTY)) {
-      // Login handoff: pager exits 10 → host web login at most once → respawn.
+      // Login handoff: pager exits 10 → host web login at most once → respawn
+      // grok-pager. Never fall through to the Node TUI while the grok binary ran.
+      let retriedWithSession = false
       while (true) {
         const code = await spawnOnce()
         if (code === null) break
         if (code !== SISU_LOGIN_EXIT_CODE) return code
         restoreInteractiveTerminal(io)
-        if (auth() || openedBrowserLogin) {
-          io.write('sisu: session already saved; not opening another login page.\n')
-          break
+        if (!auth() && !openedBrowserLogin) {
+          try {
+            const email = await startWebLogin((line) => io.write(`${line}\n`))
+            io.write(`logged in as ${email}\n`)
+          } catch (error) {
+            io.write(`${error instanceof Error ? error.message : String(error)}\n`)
+            io.write('login failed — run `sisu login`\n')
+            return 1
+          }
+          continue
         }
-        try {
-          const email = await startWebLogin((line) => io.write(`${line}\n`))
-          io.write(`logged in as ${email}\n`)
-        } catch (error) {
-          io.write(`${error instanceof Error ? error.message : String(error)}\n`)
-          io.write('login failed — run `sisu login`\n')
-          return 1
+        if (retriedWithSession) {
+          io.write('sisu: grok pager still requesting login after a saved session.\n')
+          return SISU_LOGIN_EXIT_CODE
         }
+        retriedWithSession = true
       }
     }
   }
