@@ -3,6 +3,13 @@
  *  Never fail `npm install` — Node TUI still works without the binary.
  */
 const { installPager } = require('./install-pager')
+const { installCliPath } = require('./ensure-cli-path')
+
+try {
+  installCliPath()
+} catch (error) {
+  process.stdout.write(`sisu: path setup skipped (${error instanceof Error ? error.message : String(error)})\n`)
+}
 
 installPager().then(
   (result) => {
