@@ -215,8 +215,36 @@ describe('sisu tui', () => {
     })
     expect(code).toBe(0)
     expect(spawnGrokPager).toHaveBeenCalledTimes(2)
+    expect(spawnGrokPager).toHaveBeenCalledWith([])
     expect(webLogin).not.toHaveBeenCalled()
     expect(pager).not.toHaveBeenCalled()
+  })
+
+  it('passes --resume to the grok pager so exit hints work as sisu --resume', async () => {
+    const { io } = scriptedIo([])
+    const spawnGrokPager = jest.fn().mockResolvedValue(0)
+    const http = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, complete: true, models: true }),
+    })
+    const code = await runTui(io, {
+      auth: () => ({
+        token: 'jwt',
+        email: 'ada@sisu.chat',
+        user_id: 'u1',
+        api_base: 'https://www.sisu.chat',
+      }),
+      spawnGrokPager,
+      pager: jest.fn(),
+      http,
+      pagerArgs: ['--resume', '01a07c14-4b74-7460-8885-09183ee5d261'],
+      animate: false,
+      color: false,
+      columns: 80,
+    })
+    expect(code).toBe(0)
+    expect(spawnGrokPager).toHaveBeenCalledWith(['--resume', '01a07c14-4b74-7460-8885-09183ee5d261'])
   })
 
   it('does not mint a second device login after the startup browser login', async () => {

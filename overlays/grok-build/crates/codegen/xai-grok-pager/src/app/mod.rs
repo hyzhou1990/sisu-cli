@@ -1166,10 +1166,15 @@ fn print_exit_resume_hint(info: &ExitInfo, max_width: usize, w: &mut impl Write)
         let _ = writeln!(w);
     }
     let _ = writeln!(w, "Resume this session with:");
-    if info.minimal {
-        let _ = writeln!(w, "  grok --minimal --resume {}", info.session_id);
+    let bin = if xai_grok_shell::sisu_access_point::active() {
+        "sisu"
     } else {
-        let _ = writeln!(w, "  grok --resume {}", info.session_id);
+        "grok"
+    };
+    if info.minimal {
+        let _ = writeln!(w, "  {bin} --minimal --resume {}", info.session_id);
+    } else {
+        let _ = writeln!(w, "  {bin} --resume {}", info.session_id);
     }
 }
 /// Screen-mode relaunch failure fallback (same quit tail as plain resume).
@@ -1181,11 +1186,17 @@ fn print_relaunch_failure_hint(
 ) {
     let _ = writeln!(w, "Failed to relaunch in requested mode: {error}");
     let _ = writeln!(w, "Resume this session with:");
-    let _ = writeln!(
-        w,
-        "  {}",
-        screen_mode_relaunch::screen_mode_relaunch_resume_hint(session_id, want_minimal),
-    );
+    let bin = if xai_grok_shell::sisu_access_point::active() {
+        "sisu"
+    } else {
+        "grok"
+    };
+    let hint = if want_minimal {
+        format!("{bin} --minimal --resume {session_id}")
+    } else {
+        format!("{bin} --resume {session_id}")
+    };
+    let _ = writeln!(w, "  {hint}");
 }
 /// Write raw CSI sequences to disable mouse tracking and bracketed paste.
 ///
@@ -2430,6 +2441,16 @@ mod tests {
         assert_eq!(
             String::from_utf8(buf).unwrap(),
             "\nResume this session with:\n  grok --resume sess-abc\n"
+        );
+    }
+    #[test]
+    fn print_exit_resume_hint_uses_sisu_when_access_point() {
+        let _ap = xai_grok_test_support::EnvGuard::set("SISU_ACCESS_POINT", "1");
+        let mut buf = Vec::new();
+        print_exit_resume_hint(&bare_exit_info("sess-abc", false), 80, &mut buf);
+        assert_eq!(
+            String::from_utf8(buf).unwrap(),
+            "\nResume this session with:\n  sisu --resume sess-abc\n"
         );
     }
     #[test]

@@ -1,11 +1,20 @@
-import { helpText, runCli } from './main'
+import { helpText, pagerResumeArgs, runCli } from './main'
 import { readAuth } from './store'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
 
+it('maps sisu --resume onto pager argv', () => {
+  expect(pagerResumeArgs(['--resume', 'sess-abc'])).toEqual(['--resume', 'sess-abc'])
+  expect(pagerResumeArgs(['tui', '--resume', 'sess-abc'])).toEqual(['--resume', 'sess-abc'])
+  expect(pagerResumeArgs(['--resume'])).toEqual(['--resume'])
+  expect(pagerResumeArgs([])).toEqual([])
+  expect(pagerResumeArgs(['login', '--resume', 'nope'])).toEqual([])
+})
+
 it('names the web login path plus email/password/token in help', () => {
   const text = helpText()
+  expect(text).toMatch(/sisu --resume/)
   expect(text).toMatch(/npm install -g @stevezhou\/sisu/)
   expect(text).toMatch(/browser/i)
   expect(text).toMatch(/--code/)
