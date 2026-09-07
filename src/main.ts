@@ -63,6 +63,7 @@ Usage:
   sisu thread <conversation-id>
   sisu training --on|--off
   sisu                 interactive TUI (思溯 / SiSu · 思有所溯)
+  sisu --resume <id>          reopen a local pager session
   sisu --version
   sisu help
 
@@ -79,6 +80,18 @@ function flag(args: string[], name: string): string | undefined {
   const index = args.indexOf(name)
   if (index === -1) return undefined
   return args[index + 1]
+}
+
+export function pagerResumeArgs(argv: string[]): string[] {
+  const [command, ...args] = argv
+  if (command === '--resume') {
+    return args[0] && !args[0].startsWith('-') ? ['--resume', args[0]] : ['--resume']
+  }
+  if (command && command !== 'tui') return []
+  const index = args.indexOf('--resume')
+  if (index === -1) return []
+  const id = args[index + 1]
+  return id && !id.startsWith('-') ? ['--resume', id] : ['--resume']
 }
 
 function parseArgs(args: string[]): { flags: Record<string, string>; rest: string[]; switches: Set<string> } {
@@ -115,8 +128,8 @@ export async function runCli(
     process.stdout.write(`sisu ${SISU_CLIENT_VERSION} — ${SISU_BRAND.zh} ${SISU_BRAND.en} · ${SISU_BRAND.headline}\n`)
     return 0
   }
-  if (!command || command === 'tui') {
-    return runTui(defaultTuiIo())
+  if (!command || command === 'tui' || command === '--resume') {
+    return runTui(defaultTuiIo(), { pagerArgs: pagerResumeArgs(argv) })
   }
   if (command === 'update') {
     const install = deps.installPager ?? defaultInstallPager

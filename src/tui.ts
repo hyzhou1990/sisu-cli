@@ -49,7 +49,9 @@ export interface TuiDeps {
   color?: boolean
   pager?: (io: PagerIo, transport: TurnTransport, options?: RunPagerOptions) => Promise<number>
   /** Test double / override for the stamped grok-pager child spawn. */
-  spawnGrokPager?: () => Promise<number>
+  spawnGrokPager?: (args?: string[]) => Promise<number>
+  /** Extra argv for the stamped pager, e.g. `['--resume', sessionId]`. */
+  pagerArgs?: string[]
   probe?: typeof assertRuntimeAvailable
 }
 
@@ -315,9 +317,11 @@ export async function runTui(
   }
 
   if (usePager && (deps.spawnGrokPager || !deps.pager)) {
+    const pagerArgs = deps.pagerArgs ?? []
     const spawnOnce =
-      deps.spawnGrokPager ??
-      (() => {
+      (deps.spawnGrokPager
+        ? () => deps.spawnGrokPager!(pagerArgs)
+        : () => {
         const grokBin = findGrokBuildBinary()
         if (!grokBin || !process.stdout.isTTY) {
           return Promise.resolve(null as number | null)
@@ -349,7 +353,7 @@ export async function runTui(
             )
           },
         })
-        const child = spawn(grokBin, [], {
+        const child = spawn(grokBin, pagerArgs, {
           stdio: 'inherit',
           env,
           cwd: process.cwd(),
