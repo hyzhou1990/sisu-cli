@@ -6,16 +6,39 @@ One login. Cloud quota. Local runtime. Auth lives in `~/.sisu`, shared with SiSu
 
 ## Install
 
+macOS / Linux / WSL:
+
 ```bash
-npm install -g @stevezhou/sisu
-sisu --help
+curl -fsSL https://www.sisu.chat/install.sh | bash
 sisu login
 sisu
 ```
 
-Postinstall puts `sisu` on a PATH users actually have: `~/.local/bin` on Unix, `%LOCALAPPDATA%\sisu\bin` on Windows (wrappers that call npm's `sisu.cmd`, plus a Git Bash `sisu`). It also appends that Windows directory to the user PATH. If this shell still cannot see the command, it prints `export PATH=...` (Unix) or `set PATH=` / `$env:Path` (Windows). `npm install -g` is a small JS package. It also fetches the stamped SiSu TUI pager for **this package version** into `~/.sisu/bin` when a prebuilt exists. GitHub Release tags ship `darwin-arm64`, `linux-x64`, and `linux-arm64`. `darwin-x64` is opt-in (`workflow_dispatch` with `platforms` containing `darwin-x64`) and often missing; platforms without a binary, or a missing GitHub Release asset, keep the Node TUI.
+Windows PowerShell:
 
-Requires Node.js 20 or newer. `npx sisu` works without a global install.
+```powershell
+irm https://www.sisu.chat/install.ps1 | iex
+sisu login
+sisu
+```
+
+Windows CMD:
+
+```bat
+curl -fsSL https://www.sisu.chat/install.cmd -o install.cmd && install.cmd && del install.cmd
+```
+
+The installer does **not** apt/brew/winget a system Node. If `node` ≥ 20 is already on PATH, it uses that. Otherwise it unpacks official Node 22 into `~/.sisu/node` (user-local, no sudo) and `npm install -g --prefix ~/.sisu @stevezhou/sisu`. Unix gets `~/.sisu/bin` plus a `~/.local/bin/sisu` link; Windows adds `~/.sisu` to the user PATH.
+
+Already have Node 20+ and prefer npm:
+
+```bash
+npm install -g @stevezhou/sisu
+```
+
+Postinstall also puts `sisu` on a PATH users actually have: `~/.local/bin` on Unix, `%LOCALAPPDATA%\sisu\bin` on Windows (wrappers that call npm's `sisu.cmd`, plus a Git Bash `sisu`). If this shell still cannot see the command, it prints `export PATH=...` (Unix) or `set PATH=` / `$env:Path` (Windows). `npm install -g` is a small JS package. It also fetches the stamped SiSu TUI pager for **this package version** into `~/.sisu/bin` when a prebuilt exists. GitHub Release tags ship `darwin-arm64`, `linux-x64`, and `linux-arm64`. `darwin-x64` is opt-in (`workflow_dispatch` with `platforms` containing `darwin-x64`) and often missing; platforms without a binary, or a missing GitHub Release asset, keep the Node TUI.
+
+`npx sisu` works without a global install.
 
 `sisu update` reinstalls that stamped pager for the installed CLI version. It is not a grok-style background auto-updater.
 
