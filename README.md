@@ -13,7 +13,7 @@ sisu login
 sisu
 ```
 
-`npm install -g` is a small JS package. postinstall fetches the stamped SiSu TUI pager for **this package version** into `~/.sisu/bin` when a prebuilt exists. GitHub Release tags ship `darwin-arm64`, `linux-x64`, and `linux-arm64`. `darwin-x64` is opt-in (`workflow_dispatch` with `platforms` containing `darwin-x64`) and often missing; platforms without a binary, or a missing GitHub Release asset, keep the Node TUI.
+Postinstall links `sisu` into `~/.local/bin` (Debian/login PATH) and prints an `export PATH=...` line if this shell still cannot see the command. `npm install -g` is a small JS package. It also fetches the stamped SiSu TUI pager for **this package version** into `~/.sisu/bin` when a prebuilt exists. GitHub Release tags ship `darwin-arm64`, `linux-x64`, and `linux-arm64`. `darwin-x64` is opt-in (`workflow_dispatch` with `platforms` containing `darwin-x64`) and often missing; platforms without a binary, or a missing GitHub Release asset, keep the Node TUI.
 
 Requires Node.js 20 or newer. `npx sisu` works without a global install.
 
