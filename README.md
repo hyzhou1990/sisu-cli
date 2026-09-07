@@ -40,7 +40,7 @@ Postinstall also puts `sisu` on a PATH users actually have: `~/.local/bin` on Un
 
 `npx sisu` works without a global install.
 
-`sisu update` reinstalls that stamped pager for the installed CLI version. It is not a grok-style background auto-updater.
+`sisu update` upgrades the CLI to the latest npm release (same prefix as this install) and lets postinstall fetch that version's pager. If you are already on latest, it force-reinstalls the pager. It is not a grok-style background auto-updater.
 
 ## Login
 

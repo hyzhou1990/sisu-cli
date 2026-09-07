@@ -19,6 +19,7 @@ import { SISU_CLIENT_VERSION } from './client'
 import { SISU_BRAND, sisuProductSurfaces } from './logo'
 import { DEFAULT_API_BASE } from './store'
 import { defaultTuiIo, runTui } from './tui'
+import { fetchLatestVersion, installNpmPackage, runUpdate } from './update'
 
 const req = createRequire(__filename)
 
@@ -52,7 +53,7 @@ Usage:
   sisu login --token <jwt> [--api <url>]
   sisu logout
   sisu status
-  sisu update                 reinstall the stamped local pager for this CLI version
+  sisu update                 upgrade CLI to latest and reinstall the pager
   sisu open <dir> --project <project-id>
   sisu ls [--project <project-id>]
   sisu exec "<prompt>" [--project <id>] [--model <name>] [--new] [--stub]
@@ -116,7 +117,12 @@ function parseArgs(args: string[]): { flags: Record<string, string>; rest: strin
 
 export async function runCli(
   argv: string[],
-  deps: { http?: HttpClient; installPager?: InstallPager } = {},
+  deps: {
+    http?: HttpClient
+    installPager?: InstallPager
+    fetchLatest?: () => Promise<string>
+    installPackage?: (version: string) => Promise<void> | void
+  } = {},
 ): Promise<number> {
   const http = deps.http ?? defaultHttp
   const [command, ...args] = argv
@@ -132,18 +138,17 @@ export async function runCli(
     return runTui(defaultTuiIo(), { pagerArgs: pagerResumeArgs(argv) })
   }
   if (command === 'update') {
-    const install = deps.installPager ?? defaultInstallPager
-    const result = await install({ force: true })
-    if (result.ok) {
-      process.stdout.write(
-        result.skipped
-          ? `pager already current${result.dest ? ` at ${result.dest}` : ''}\n`
-          : `installed pager${result.dest ? ` to ${result.dest}` : ''}\n`,
-      )
-      return 0
-    }
-    process.stderr.write(`sisu update: ${result.reason || 'pager install failed'}\n`)
-    return result.skipped ? 0 : 1
+    return runUpdate({
+      fetchLatest: deps.fetchLatest ?? (() => fetchLatestVersion(http)),
+      installPackage: deps.installPackage ?? ((version) => installNpmPackage(version)),
+      installPager: deps.installPager ?? defaultInstallPager,
+      write: (text) => {
+        process.stdout.write(text)
+      },
+      writeErr: (text) => {
+        process.stderr.write(text)
+      },
+    })
   }
   if (command === 'status') {
     process.stdout.write(`${await statusCommand(defaultHttp)}\n`)

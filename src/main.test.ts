@@ -1,3 +1,4 @@
+import { SISU_CLIENT_VERSION } from './client'
 import { helpText, pagerResumeArgs, runCli } from './main'
 import { readAuth } from './store'
 import fs from 'fs'
@@ -180,16 +181,22 @@ it('runCli login --token still prints logged in as', async () => {
   }
 })
 
-it('runCli update invokes pager install with force', async () => {
+it('runCli update invokes pager install with force when already on latest', async () => {
   const installPager = jest.fn().mockResolvedValue({ ok: true, dest: '/tmp/xai-grok-pager' })
+  const installPackage = jest.fn()
   const writes: string[] = []
   const stdout = jest.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
     writes.push(String(chunk))
     return true
   })
   try {
-    const code = await runCli(['update'], { installPager })
+    const code = await runCli(['update'], {
+      installPager,
+      fetchLatest: async () => SISU_CLIENT_VERSION,
+      installPackage,
+    })
     expect(code).toBe(0)
+    expect(installPackage).not.toHaveBeenCalled()
     expect(installPager).toHaveBeenCalledWith({ force: true })
     expect(writes.join('')).toMatch(/pager/i)
   } finally {
@@ -197,9 +204,32 @@ it('runCli update invokes pager install with force', async () => {
   }
 })
 
+it('runCli update upgrades the npm package when latest is newer', async () => {
+  const installPager = jest.fn()
+  const installPackage = jest.fn().mockResolvedValue(undefined)
+  const writes: string[] = []
+  const stdout = jest.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+    writes.push(String(chunk))
+    return true
+  })
+  try {
+    const code = await runCli(['update'], {
+      installPager,
+      fetchLatest: async () => '9.9.9',
+      installPackage,
+    })
+    expect(code).toBe(0)
+    expect(installPackage).toHaveBeenCalledWith('9.9.9')
+    expect(installPager).not.toHaveBeenCalled()
+    expect(writes.join('')).toMatch(/9\.9\.9/)
+  } finally {
+    stdout.mockRestore()
+  }
+})
+
 it('help lists sisu update', () => {
   expect(helpText()).toMatch(/sisu update/)
-  expect(helpText()).toMatch(/stamped local pager/)
+  expect(helpText()).toMatch(/upgrade CLI/)
   expect(helpText()).toMatch(/\/api\/runtime\/v1\/models/)
   expect(helpText()).not.toMatch(/\/api\/chat\/models/)
   expect(helpText()).not.toMatch(/grok login|grok OAuth|auth\.x\.ai/i)
