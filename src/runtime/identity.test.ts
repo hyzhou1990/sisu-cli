@@ -6,6 +6,45 @@ import { helpText } from '../main'
 import { sisuGrokBuildEnv, writeSisuGrokConfig } from './launch'
 import { PRODUCT_BIN, PRODUCT_NAME, assertGrokBuildSuite, grokBuildPath, grokBuildSuitePresent } from './suite'
 
+it('context bar prefers the current model window over a sticky session total', () => {
+  const contextBar = fs.readFileSync(
+    path.join(
+      __dirname,
+      '..',
+      '..',
+      'overlays',
+      'grok-build',
+      'crates',
+      'codegen',
+      'xai-grok-pager',
+      'src',
+      'views',
+      'context_bar.rs',
+    ),
+    'utf8',
+  )
+  expect(contextBar).toContain('fn effective_context_total')
+  expect(contextBar).toContain('Switching SiSu-Pro (1M) → Grok (500k)')
+  const render = fs.readFileSync(
+    path.join(
+      __dirname,
+      '..',
+      '..',
+      'overlays',
+      'grok-build',
+      'crates',
+      'codegen',
+      'xai-grok-pager',
+      'src',
+      'app',
+      'agent_view',
+      'render.rs',
+    ),
+    'utf8',
+  )
+  expect(render).toContain('effective_context_total')
+})
+
 it('overlay system prompt is SiSu, not Grok released by xAI', () => {
   const promptTpl = fs.readFileSync(
     path.join(__dirname, '..', '..', 'overlays', 'grok-build', 'crates', 'codegen', 'xai-grok-agent', 'templates', 'prompt.md'),
