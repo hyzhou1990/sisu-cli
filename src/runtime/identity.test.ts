@@ -12,6 +12,8 @@ it('overlay system prompt is SiSu, not Grok released by xAI', () => {
     'utf8',
   )
   expect(promptTpl).toMatch(/思溯 \/ SiSu/)
+  expect(promptTpl).toMatch(/not an xAI product/)
+  expect(promptTpl).toMatch(/selected SiSu model/)
   expect(promptTpl).not.toMatch(/released by xAI/)
   expect(promptTpl).not.toMatch(/Grok Build TUI/)
   expect(promptTpl.startsWith('You are ${{ system_prompt_label }}')).toBe(true)
