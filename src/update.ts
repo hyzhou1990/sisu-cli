@@ -18,7 +18,8 @@ export type UpdatePlan =
   | { action: 'pager'; version: string }
 
 export function planUpdate(current: string, latest: string | null): UpdatePlan {
-  if (latest && comparePagerStamp(latest, current) > 0) {
+  if (!latest) return { action: 'upgrade', from: current, to: 'latest' }
+  if (comparePagerStamp(latest, current) > 0) {
     return { action: 'upgrade', from: current, to: latest }
   }
   return { action: 'pager', version: current }
@@ -81,21 +82,30 @@ export async function runUpdate(options: {
 }): Promise<number> {
   const current = options.currentVersion || SISU_CLIENT_VERSION
   const writeErr = options.writeErr || options.write
+  options.write(`sisu: cli ${current}\n`)
   let latest: string | null = null
   try {
     latest = await options.fetchLatest()
+    options.write(`sisu: npm latest ${latest}\n`)
   } catch (error) {
     options.write(
-      `sisu update: could not check npm (${error instanceof Error ? error.message : String(error)}); reinstalling pager\n`,
+      `sisu: could not check npm (${error instanceof Error ? error.message : String(error)}); installing @latest\n`,
     )
   }
   const plan = planUpdate(current, latest)
   if (plan.action === 'upgrade') {
     options.write(`sisu: cli ${plan.from} -> ${plan.to}\n`)
-    await options.installPackage(plan.to)
+    try {
+      await options.installPackage(plan.to)
+    } catch (error) {
+      writeErr(`sisu update: ${error instanceof Error ? error.message : String(error)}\n`)
+      writeErr('sisu update: run `npm install -g @stevezhou/sisu` then `sisu --version`\n')
+      return 1
+    }
     options.write(`sisu: cli ${plan.to} installed (pager via postinstall). restart sisu.\n`)
     return 0
   }
+  options.write(`sisu: cli already ${current}\n`)
   const result = await options.installPager({ force: true })
   if (result.ok) {
     options.write(

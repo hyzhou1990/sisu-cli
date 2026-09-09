@@ -198,7 +198,33 @@ it('runCli update invokes pager install with force when already on latest', asyn
     expect(code).toBe(0)
     expect(installPackage).not.toHaveBeenCalled()
     expect(installPager).toHaveBeenCalledWith({ force: true })
+    expect(writes.join('')).toMatch(/cli already/)
     expect(writes.join('')).toMatch(/pager/i)
+  } finally {
+    stdout.mockRestore()
+  }
+})
+
+it('runCli update still npm-installs latest when the registry check fails', async () => {
+  const installPager = jest.fn()
+  const installPackage = jest.fn().mockResolvedValue(undefined)
+  const writes: string[] = []
+  const stdout = jest.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+    writes.push(String(chunk))
+    return true
+  })
+  try {
+    const code = await runCli(['update'], {
+      installPager,
+      fetchLatest: async () => {
+        throw new Error('network down')
+      },
+      installPackage,
+    })
+    expect(code).toBe(0)
+    expect(installPackage).toHaveBeenCalledWith('latest')
+    expect(installPager).not.toHaveBeenCalled()
+    expect(writes.join('')).toMatch(/cli /)
   } finally {
     stdout.mockRestore()
   }

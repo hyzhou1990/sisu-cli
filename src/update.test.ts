@@ -6,7 +6,7 @@ import { npmGlobalPrefix, planUpdate } from './update'
 it('plans a CLI upgrade when npm latest is newer than this process', () => {
   expect(planUpdate('0.3.17', '0.3.18')).toEqual({ action: 'upgrade', from: '0.3.17', to: '0.3.18' })
   expect(planUpdate('0.3.18', '0.3.18')).toEqual({ action: 'pager', version: '0.3.18' })
-  expect(planUpdate('0.3.18', null)).toEqual({ action: 'pager', version: '0.3.18' })
+  expect(planUpdate('0.3.18', null)).toEqual({ action: 'upgrade', from: '0.3.18', to: 'latest' })
 })
 
 it('resolves the npm --prefix from a unix global install layout', () => {
