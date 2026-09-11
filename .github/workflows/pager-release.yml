@@ -1,6 +1,6 @@
 name: Pager release assets
 
-# Tag v* builds darwin-arm64 + linux only.
+# Tag v* builds darwin-arm64 + linux + win32-x64.
 # darwin-x64 is dispatch-only (macos-13); missing asset → install-pager 404 → Node TUI.
 # vendor/grok-build is gitignored — this job fetches the pin then applies overlays.
 # Do not upload placeholder binaries.
@@ -11,7 +11,7 @@ on:
       platforms:
         description: 'Comma-separated PLATFORM_KEY values'
         required: false
-        default: 'darwin-arm64,linux-x64,linux-arm64'
+        default: 'darwin-arm64,linux-x64,linux-arm64,win32-x64'
   push:
     tags:
       - 'v*'
@@ -35,9 +35,21 @@ jobs:
           - platform: linux-arm64
             os: ubuntu-24.04-arm
             cargo_target: ''
+          - platform: win32-x64
+            os: windows-latest
+            cargo_target: ''
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
     steps:
+      - name: Keep LF line endings
+        if: runner.os == 'Windows'
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.longpaths true
+
       - uses: actions/checkout@v6
 
       - name: Fetch pinned grok-build and apply SiSu overlay
@@ -59,10 +71,17 @@ jobs:
           set -euo pipefail
           if command -v brew >/dev/null 2>&1; then
             brew install protobuf
-          else
+          elif command -v apt-get >/dev/null 2>&1; then
             sudo apt-get update
             sudo apt-get install -y protobuf-compiler
+          elif command -v choco >/dev/null 2>&1; then
+            choco install protoc -y
+          else
+            echo "no protobuf installer on this runner" >&2
+            exit 1
           fi
+          command -v protoc || command -v protoc.exe
+          protoc --version
 
       - name: Build and package .br
         env:

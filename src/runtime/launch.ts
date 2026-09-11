@@ -34,17 +34,22 @@ export async function assertRuntimeAvailable(
   if (!body || body.ok !== true) throw new RuntimeUnavailable('health body missing ok')
 }
 
+export function pagerBinaryName(platform: NodeJS.Platform = process.platform): string {
+  return platform === 'win32' ? 'xai-grok-pager.exe' : 'xai-grok-pager'
+}
+
 export function grokBuildBinaryCandidates(): string[] {
   const env = (process.env.SISU_GROK_BIN || '').trim()
   const root = grokBuildRoot()
-  const packaged = path.resolve(__dirname, '..', 'bin', 'xai-grok-pager')
-  const npmInstalled = path.join(getSisuHome(), 'bin', process.platform === 'win32' ? 'xai-grok-pager.exe' : 'xai-grok-pager')
+  const name = pagerBinaryName()
+  const packaged = path.resolve(__dirname, '..', 'bin', name)
+  const npmInstalled = path.join(getSisuHome(), 'bin', name)
   return [
     env,
     npmInstalled,
     packaged,
-    path.join(root, 'target', 'release', 'xai-grok-pager'),
-    path.join(root, 'target', 'debug', 'xai-grok-pager'),
+    path.join(root, 'target', 'release', name),
+    path.join(root, 'target', 'debug', name),
     path.join(root, 'target', 'release', 'sisu-agent'),
   ].filter(Boolean)
 }
@@ -133,7 +138,7 @@ export function purgeChangelogCache(home: string, engine: string): void {
 }
 
 export function installedPagerPath(): string {
-  return path.join(getSisuHome(), 'bin', process.platform === 'win32' ? 'xai-grok-pager.exe' : 'xai-grok-pager')
+  return path.join(getSisuHome(), 'bin', pagerBinaryName())
 }
 
 export function pagerStampPath(dest = installedPagerPath()): string {
