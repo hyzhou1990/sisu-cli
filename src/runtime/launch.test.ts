@@ -7,7 +7,9 @@ import { execCommand } from '../commands'
 import { grokBuildPath } from './suite'
 import {
   assertRuntimeAvailable,
+  grokBuildBinaryCandidates,
   migrateGrokScratchToEngine,
+  pagerBinaryName,
   purgeChangelogCache,
   purgeXaiEngineAuth,
   RuntimeUnavailable,
@@ -220,6 +222,15 @@ it('B-lite contract: no SISU_HOME on child, engine home, overwritten XAI_API_KEY
     else process.env.GROK_DEFAULT_MODEL = previous.def
     fs.rmSync(home, { recursive: true, force: true })
   }
+})
+
+it('names the Windows pager binary with an .exe suffix', () => {
+  expect(pagerBinaryName('win32')).toBe('xai-grok-pager.exe')
+  expect(pagerBinaryName('darwin')).toBe('xai-grok-pager')
+  expect(pagerBinaryName('linux')).toBe('xai-grok-pager')
+  const candidates = grokBuildBinaryCandidates()
+  const expected = pagerBinaryName()
+  expect(candidates.some((item) => item.endsWith(path.join('bin', expected)))).toBe(true)
 })
 
 it('refuses spawn of an installed pager whose stamp is older than this package', () => {

@@ -36,7 +36,7 @@ Already have Node 20+ and prefer npm:
 npm install -g @stevezhou/sisu
 ```
 
-Postinstall also puts `sisu` on a PATH users actually have: `~/.local/bin` on Unix, `%LOCALAPPDATA%\sisu\bin` on Windows (wrappers that call npm's `sisu.cmd`, plus a Git Bash `sisu`). If this shell still cannot see the command, it prints `export PATH=...` (Unix) or `set PATH=` / `$env:Path` (Windows). `npm install -g` is a small JS package. It also fetches the stamped SiSu TUI pager for **this package version** into `~/.sisu/bin` when a prebuilt exists. GitHub Release tags ship `darwin-arm64`, `linux-x64`, and `linux-arm64`. `darwin-x64` is opt-in (`workflow_dispatch` with `platforms` containing `darwin-x64`) and often missing; platforms without a binary, or a missing GitHub Release asset, keep the Node TUI.
+Postinstall also puts `sisu` on a PATH users actually have: `~/.local/bin` on Unix, `%LOCALAPPDATA%\sisu\bin` on Windows (wrappers that call npm's `sisu.cmd`, plus a Git Bash `sisu`). If this shell still cannot see the command, it prints `export PATH=...` (Unix) or `set PATH=` / `$env:Path` (Windows). `npm install -g` is a small JS package. It also fetches the stamped SiSu TUI pager for **this package version** into `~/.sisu/bin` when a prebuilt exists. GitHub Release tags ship `darwin-arm64`, `linux-x64`, `linux-arm64`, and `win32-x64`. `darwin-x64` is opt-in (`workflow_dispatch` with `platforms` containing `darwin-x64`) and often missing; platforms without a binary, or a missing GitHub Release asset, keep the Node TUI.
 
 `npx sisu` works without a global install.
 

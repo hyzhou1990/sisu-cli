@@ -1,6 +1,6 @@
 name: Pager release assets
 
-# Tag v* builds darwin-arm64 + linux only.
+# Tag v* builds darwin-arm64 + linux + win32-x64.
 # darwin-x64 is dispatch-only (macos-13); missing asset → install-pager 404 → Node TUI.
 # vendor/grok-build is gitignored — this job fetches the pin then applies overlays.
 # Do not upload placeholder binaries.
@@ -11,7 +11,7 @@ on:
       platforms:
         description: 'Comma-separated PLATFORM_KEY values'
         required: false
-        default: 'darwin-arm64,linux-x64,linux-arm64'
+        default: 'darwin-arm64,linux-x64,linux-arm64,win32-x64'
   push:
     tags:
       - 'v*'
@@ -22,6 +22,7 @@ permissions:
 jobs:
   build-pager:
     name: pager ${{ matrix.platform }}
+    if: ${{ github.event_name != 'workflow_dispatch' || contains(github.event.inputs.platforms, 'darwin-arm64') || contains(github.event.inputs.platforms, 'linux-x64') || contains(github.event.inputs.platforms, 'linux-arm64') }}
     strategy:
       fail-fast: false
       matrix:
@@ -81,6 +82,61 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: bin/xai-grok-pager-${{ matrix.platform }}.br
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-pager-win32:
+    name: pager win32-x64
+    if: ${{ github.event_name != 'workflow_dispatch' || contains(github.event.inputs.platforms, 'win32-x64') }}
+    runs-on: windows-latest
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Keep LF line endings
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.longpaths true
+
+      - uses: actions/checkout@v6
+
+      - name: Fetch pinned grok-build and apply SiSu overlay
+        run: |
+          set -euo pipefail
+          sh scripts/fetch-grok-build.sh
+          test -f vendor/grok-build/crates/codegen/xai-grok-pager-bin/src/sisu_access_point.rs
+          test -f vendor/grok-build/crates/codegen/xai-grok-shell/src/sisu_access_point.rs
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protoc
+        run: |
+          set -euo pipefail
+          choco install protoc -y
+          command -v protoc || command -v protoc.exe
+          protoc --version
+
+      - name: Build and package .br
+        env:
+          PLATFORM_KEY: win32-x64
+          INSTALL_HOME: '0'
+          PACKAGE_BR: '1'
+        run: |
+          set -euo pipefail
+          sh scripts/build-grok-pager.sh
+          test -f bin/xai-grok-pager-win32-x64.br
+
+      - name: Upload release asset
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bin/xai-grok-pager-win32-x64.br
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

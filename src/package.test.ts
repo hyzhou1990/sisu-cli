@@ -21,6 +21,7 @@ it('README describes the runtime catalog and pager-only update', () => {
   expect(readme).toMatch(/stamped/)
   expect(readme).toMatch(/www\.sisu\.chat\/install\.sh/)
   expect(readme).toMatch(/www\.sisu\.chat\/install\.ps1/)
+  expect(readme).toMatch(/win32-x64/)
   expect(readme).not.toMatch(/\/api\/chat\/models/)
   expect(readme).not.toMatch(/Grok Build TUI/)
 })
