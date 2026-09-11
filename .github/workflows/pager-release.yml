@@ -39,6 +39,7 @@ jobs:
             os: windows-latest
             cargo_target: ''
     runs-on: ${{ matrix.os }}
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || contains(github.event.inputs.platforms, matrix.platform) }}
     timeout-minutes: 180
     defaults:
       run:

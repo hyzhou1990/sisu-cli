@@ -64,6 +64,45 @@ elif [ -d "$ROOT/overlays/grok-build" ] && [ -d "$ROOT/vendor/grok-build" ]; the
   done
 fi
 
+if [ -n "$BIN_EXT" ]; then
+  # grok-build ships a unix dotslash wrapper at bin/protoc (Win32 error 193).
+  rm -f "$ROOT/vendor/grok-build/bin/protoc"
+  # xai-proto-build emit_rerun_if_changed uses --dependency_out=/dev/stdout
+  # and --descriptor_set_out=/dev/null. Windows protoc cannot open those.
+  # Skip the cargo:rerun walk on Windows; prost-build still compiles.
+  proto_rs="$ROOT/vendor/grok-build/crates/build/xai-proto-build/src/lib.rs"
+  node -e '
+    const fs = require("fs");
+    const file = process.argv[1];
+    const src = fs.readFileSync(file, "utf8");
+    if (src.includes("SiSu win32-x64: skip emit_rerun_if_changed")) process.exit(0);
+    const needle = "        let includes = Vec::from_iter(includes);\n";
+    const insert =
+      needle +
+      "        // SiSu win32-x64: skip emit_rerun_if_changed (/dev/stdout is not a file).\n" +
+      "        if cfg!(windows) {\n" +
+      "            return Ok(());\n" +
+      "        }\n";
+    if (!src.includes(needle)) {
+      console.error("build-grok-pager: missing xai-proto-build patch point");
+      process.exit(1);
+    }
+    fs.writeFileSync(file, src.replace(needle, insert));
+  ' "$proto_rs"
+  proto_bin="$(command -v protoc.exe || command -v protoc || true)"
+  if [ -z "$proto_bin" ]; then
+    echo "build-grok-pager: protoc not on PATH" >&2
+    exit 1
+  fi
+  if command -v cygpath >/dev/null 2>&1; then
+    PROTOC="$(cygpath -w "$proto_bin")"
+  else
+    PROTOC="$proto_bin"
+  fi
+  export PROTOC
+  echo "using PROTOC=$PROTOC"
+fi
+
 cd "$ROOT/vendor/grok-build"
 if [ -n "${CARGO_TARGET:-}" ]; then
   cargo build -p xai-grok-pager-bin --release --target "$CARGO_TARGET"
