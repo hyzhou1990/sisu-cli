@@ -14,6 +14,8 @@ it('builds and packages a win32-x64 pager exe', () => {
   expect(script).toMatch(/rm -f "\$ROOT\/vendor\/grok-build\/bin\/protoc"/)
   expect(script).toMatch(/SiSu win32-x64: skip emit_rerun_if_changed/)
   expect(script).toMatch(/cygpath -w/)
+  expect(script).toMatch(/require\('\.\/package\.json'\)/)
+  expect(script).not.toMatch(/require\('\$\{ROOT\}\/package\.json'\)/)
 })
 
 it('tag pager-release includes a native windows-latest win32-x64 job', () => {

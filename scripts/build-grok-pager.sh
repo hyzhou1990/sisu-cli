@@ -122,10 +122,12 @@ cp "$BIN_SRC" "$ROOT/bin/xai-grok-pager${BIN_EXT}"
 chmod +x "$ROOT/bin/xai-grok-pager${BIN_EXT}" 2>/dev/null || true
 echo "installed $ROOT/bin/xai-grok-pager${BIN_EXT} (platform ${PLATFORM_KEY})"
 
-VERSION="$(node -p "require('${ROOT}/package.json').version")"
+# Windows Node cannot require() Git-bash paths like /d/a/.../package.json.
+cd "$ROOT"
+VERSION="$(node -p "require('./package.json').version")"
 
 if [ "$PACKAGE_BR" = "1" ]; then
-  BR_OUT="$ROOT/bin/xai-grok-pager-${PLATFORM_KEY}.br"
+  BR_OUT="bin/xai-grok-pager-${PLATFORM_KEY}.br"
   node -e "
     const fs = require('fs');
     const zlib = require('zlib');
@@ -133,8 +135,8 @@ if [ "$PACKAGE_BR" = "1" ]; then
     const dest = process.argv[2];
     const raw = fs.readFileSync(src);
     fs.writeFileSync(dest, zlib.brotliCompressSync(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 } }));
-  " "$ROOT/bin/xai-grok-pager${BIN_EXT}" "$BR_OUT"
-  echo "packaged ${BR_OUT}"
+  " "bin/xai-grok-pager${BIN_EXT}" "$BR_OUT"
+  echo "packaged ${ROOT}/${BR_OUT}"
 fi
 
 if [ "$INSTALL_HOME" = "1" ]; then
