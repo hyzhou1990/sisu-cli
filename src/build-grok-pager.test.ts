@@ -17,9 +17,9 @@ it('builds and packages a win32-x64 pager exe', () => {
 })
 
 it('tag pager-release includes a native windows-latest win32-x64 job', () => {
-  expect(workflow).toMatch(/platform: win32-x64/)
-  expect(workflow).toMatch(/os: windows-latest/)
-  expect(workflow).toMatch(/contains\(github\.event\.inputs\.platforms, matrix\.platform\)/)
+  expect(workflow).toMatch(/build-pager-win32/)
+  expect(workflow).toMatch(/runs-on: windows-latest/)
+  expect(workflow).toMatch(/contains\(github\.event\.inputs\.platforms, 'win32-x64'\)/)
   expect(workflow).toMatch(/shell: bash/)
   expect(workflow).toMatch(/choco install protoc/)
   expect(workflow).toMatch(/core\.autocrlf false/)

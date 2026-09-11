@@ -22,6 +22,7 @@ permissions:
 jobs:
   build-pager:
     name: pager ${{ matrix.platform }}
+    if: ${{ github.event_name != 'workflow_dispatch' || contains(github.event.inputs.platforms, 'darwin-arm64') || contains(github.event.inputs.platforms, 'linux-x64') || contains(github.event.inputs.platforms, 'linux-arm64') }}
     strategy:
       fail-fast: false
       matrix:
@@ -35,18 +36,65 @@ jobs:
           - platform: linux-arm64
             os: ubuntu-24.04-arm
             cargo_target: ''
-          - platform: win32-x64
-            os: windows-latest
-            cargo_target: ''
     runs-on: ${{ matrix.os }}
-    if: ${{ startsWith(github.ref, 'refs/tags/v') || contains(github.event.inputs.platforms, matrix.platform) }}
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Fetch pinned grok-build and apply SiSu overlay
+        run: |
+          set -euo pipefail
+          sh scripts/fetch-grok-build.sh
+          test -f vendor/grok-build/crates/codegen/xai-grok-pager-bin/src/sisu_access_point.rs
+          test -f vendor/grok-build/crates/codegen/xai-grok-shell/src/sisu_access_point.rs
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protoc
+        run: |
+          set -euo pipefail
+          if command -v brew >/dev/null 2>&1; then
+            brew install protobuf
+          else
+            sudo apt-get update
+            sudo apt-get install -y protobuf-compiler
+          fi
+
+      - name: Build and package .br
+        env:
+          PLATFORM_KEY: ${{ matrix.platform }}
+          CARGO_TARGET: ${{ matrix.cargo_target }}
+          INSTALL_HOME: '0'
+          PACKAGE_BR: '1'
+        run: |
+          set -euo pipefail
+          if [ -z "${CARGO_TARGET}" ]; then unset CARGO_TARGET; fi
+          sh scripts/build-grok-pager.sh
+          test -f "bin/xai-grok-pager-${PLATFORM_KEY}.br"
+
+      - name: Upload release asset
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bin/xai-grok-pager-${{ matrix.platform }}.br
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-pager-win32:
+    name: pager win32-x64
+    if: ${{ github.event_name != 'workflow_dispatch' || contains(github.event.inputs.platforms, 'win32-x64') }}
+    runs-on: windows-latest
     timeout-minutes: 180
     defaults:
       run:
         shell: bash
     steps:
       - name: Keep LF line endings
-        if: runner.os == 'Windows'
         run: |
           git config --global core.autocrlf false
           git config --global core.longpaths true
@@ -70,37 +118,25 @@ jobs:
       - name: Install protoc
         run: |
           set -euo pipefail
-          if command -v brew >/dev/null 2>&1; then
-            brew install protobuf
-          elif command -v apt-get >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y protobuf-compiler
-          elif command -v choco >/dev/null 2>&1; then
-            choco install protoc -y
-          else
-            echo "no protobuf installer on this runner" >&2
-            exit 1
-          fi
+          choco install protoc -y
           command -v protoc || command -v protoc.exe
           protoc --version
 
       - name: Build and package .br
         env:
-          PLATFORM_KEY: ${{ matrix.platform }}
-          CARGO_TARGET: ${{ matrix.cargo_target }}
+          PLATFORM_KEY: win32-x64
           INSTALL_HOME: '0'
           PACKAGE_BR: '1'
         run: |
           set -euo pipefail
-          if [ -z "${CARGO_TARGET}" ]; then unset CARGO_TARGET; fi
           sh scripts/build-grok-pager.sh
-          test -f "bin/xai-grok-pager-${PLATFORM_KEY}.br"
+          test -f bin/xai-grok-pager-win32-x64.br
 
       - name: Upload release asset
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: bin/xai-grok-pager-${{ matrix.platform }}.br
+          files: bin/xai-grok-pager-win32-x64.br
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
