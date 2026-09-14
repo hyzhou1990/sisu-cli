@@ -1,5 +1,6 @@
 import { spawnSync } from 'child_process'
 import fs from 'fs'
+import os from 'os'
 import path from 'path'
 import { SISU_CLIENT_VERSION } from './client'
 import { defaultHttp, type HttpClient } from './http'
@@ -43,6 +44,19 @@ export function npmCliPath(home = getSisuHome()): string {
   return process.platform === 'win32' ? 'npm.cmd' : 'npm'
 }
 
+/** npm calls process.cwd() at startup. macOS TCC often blocks Desktop, so never inherit it. */
+export function npmInstallCwd(home = getSisuHome()): string {
+  for (const dir of [home, os.homedir(), os.tmpdir()]) {
+    try {
+      fs.accessSync(dir, fs.constants.R_OK)
+      return dir
+    } catch {
+      continue
+    }
+  }
+  return os.tmpdir()
+}
+
 export async function fetchLatestVersion(http: HttpClient = defaultHttp): Promise<string> {
   const response = await http('https://registry.npmjs.org/@stevezhou/sisu/latest', {
     headers: { Accept: 'application/json' },
@@ -59,6 +73,7 @@ export function installNpmPackage(
   options: {
     npm?: string
     prefix?: string
+    cwd?: string
     spawn?: typeof spawnSync
   } = {},
 ): void {
@@ -66,7 +81,10 @@ export function installNpmPackage(
   const prefix = options.prefix === undefined ? npmGlobalPrefix() : options.prefix
   const args = ['install', '-g', `@stevezhou/sisu@${version}`]
   if (prefix) args.push('--prefix', prefix)
-  const result = (options.spawn || spawnSync)(npm, args, { stdio: 'inherit' })
+  const result = (options.spawn || spawnSync)(npm, args, {
+    stdio: 'inherit',
+    cwd: options.cwd || npmInstallCwd(),
+  })
   if ((result.status ?? 1) !== 0) {
     throw new Error(`npm install failed (${result.status ?? 'spawn'})`)
   }
@@ -99,7 +117,7 @@ export async function runUpdate(options: {
       await options.installPackage(plan.to)
     } catch (error) {
       writeErr(`sisu update: ${error instanceof Error ? error.message : String(error)}\n`)
-      writeErr('sisu update: run `npm install -g @stevezhou/sisu` then `sisu --version`\n')
+      writeErr('sisu update: run `cd ~ && npm install -g @stevezhou/sisu` then `sisu --version`\n')
       return 1
     }
     options.write(`sisu: cli ${plan.to} installed (pager via postinstall). restart sisu.\n`)
