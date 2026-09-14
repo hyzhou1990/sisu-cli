@@ -155,6 +155,10 @@ main() {
   mkdir -p "$SISU_HOME"
   local npm
   npm="$(resolve_npm)"
+  if [ -x "${SISU_HOME}/node/bin/node" ]; then
+    export PATH="${SISU_HOME}/node/bin:${PATH}"
+    export npm_config_scripts_prepend_node_path=true
+  fi
   log "npm -> ${npm}"
   "$npm" install -g --prefix "$SISU_HOME" "$SISU_NPM_PACKAGE"
   link_private_node_bins

@@ -43,8 +43,8 @@ function Install-PrivateNode {
     New-Item -ItemType Directory -Path $tmp | Out-Null
     Write-Sisu "installing Node $NodeVersion into $SisuHome\node (user-local, not system npm)"
     $zipPath = Join-Path $tmp $zipName
-    Invoke-WebRequest -Uri $url -OutFile $zipPath
-    $sums = Invoke-WebRequest -Uri "$NodeDist/v$NodeVersion/SHASUMS256.txt"
+    Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+    $sums = Invoke-WebRequest -Uri "$NodeDist/v$NodeVersion/SHASUMS256.txt" -UseBasicParsing
     $expected = ($sums.Content -split "`n" | Where-Object { $_ -match [regex]::Escape($zipName) } | Select-Object -First 1)
     if (-not $expected) { throw "no checksum for $zipName" }
     $want = ($expected -split '\s+')[0].ToLowerInvariant()
@@ -68,6 +68,16 @@ function Resolve-Npm {
     return (Join-Path $SisuHome 'node\npm.cmd')
 }
 
+function Use-SisuNodeOnPath {
+    $nodeDir = Join-Path $SisuHome 'node'
+    $nodeExe = Join-Path $nodeDir 'node.exe'
+    if (-not (Test-Path $nodeExe)) { return }
+    # npm lifecycle scripts spawn `cmd /c node scripts/postinstall.js` and look
+    # up `node` on PATH. The private runtime is not on PATH until after install.
+    $env:Path = "$nodeDir;$env:Path"
+    $env:npm_config_scripts_prepend_node_path = 'true'
+}
+
 function Add-UserPath([string]$Dir) {
     $current = [Environment]::GetEnvironmentVariable('Path', 'User')
     if (-not $current) { $current = '' }
@@ -81,6 +91,7 @@ function Add-UserPath([string]$Dir) {
 
 New-Item -ItemType Directory -Path $SisuHome -Force | Out-Null
 $npm = Resolve-Npm
+Use-SisuNodeOnPath
 Write-Sisu "npm -> $npm"
 & $npm install -g --prefix $SisuHome $NpmPackage
 if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
