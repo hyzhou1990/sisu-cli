@@ -1,5 +1,6 @@
 import { spawnSync } from 'child_process'
 import fs from 'fs'
+import os from 'os'
 import path from 'path'
 import { SISU_CLIENT_VERSION } from '../client'
 import { DEFAULT_API_BASE, ensureConversationId, readAuth, getSisuHome, sisuAuthPath, sisuEngineHome } from '../store'
@@ -187,6 +188,30 @@ export function pagerStampAllowsSpawn(binary: string): boolean {
   return pagerStampMeetsRelease(installedPagerStamp(binary), MIN_PAGER_STAMP)
 }
 
+export function prependToolPath(pathEnv = process.env.PATH || '', home = getSisuHome()): string {
+  const extra =
+    process.platform === 'win32'
+      ? [path.join(home, 'node'), path.join(home, 'bin')]
+      : [
+          path.join(home, 'node', 'bin'),
+          path.join(home, 'bin'),
+          path.join(os.homedir(), '.local', 'bin'),
+          '/opt/homebrew/bin',
+        ]
+  const delim = path.delimiter
+  const current = pathEnv.split(delim).filter(Boolean)
+  const seen = new Set(current.map((dir) => (process.platform === 'win32' ? dir.toLowerCase() : dir)))
+  const prefix: string[] = []
+  for (const dir of extra) {
+    if (!dir || !fs.existsSync(dir)) continue
+    const key = process.platform === 'win32' ? dir.toLowerCase() : dir
+    if (seen.has(key)) continue
+    seen.add(key)
+    prefix.push(dir)
+  }
+  return [...prefix, ...current].join(delim)
+}
+
 export function sisuGrokBuildEnv(): NodeJS.ProcessEnv {
   const auth = readAuth()
   const engine = sisuEngineHome()
@@ -221,6 +246,7 @@ export function sisuGrokBuildEnv(): NodeJS.ProcessEnv {
     })
   }
   purgeXaiEngineAuth(engine)
+  env.PATH = prependToolPath(env.PATH || '', getSisuHome())
   return {
     ...env,
     SISU_ACCESS_POINT: '1',

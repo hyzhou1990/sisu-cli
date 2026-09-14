@@ -26,6 +26,9 @@ it('ships curl and PowerShell installers that never apt/brew/choco a system Node
   expect(sh).toMatch(/@stevezhou\/sisu/)
   expect(sh).toMatch(/npm_config_scripts_prepend_node_path/)
   expect(sh).toMatch(/\$\{SISU_HOME\}\/node\/bin:\$\{PATH\}/)
+  expect(sh).toMatch(/link_bin "\$\{SISU_HOME\}\/node\/bin\/npm" npm/)
+  expect(sh).toMatch(/link_bin "\$\{SISU_HOME\}\/node\/bin\/npm" nmp/)
+  expect(sh).toMatch(/\$\{HOME\}\/\.local\/bin/)
   expect(sh).not.toMatch(/apt-get |apt install |dnf install |yum install |brew install |choco install|winget install/)
   expect(ps1).toMatch(/nodejs\.org\/dist/)
   expect(ps1).toMatch(/@stevezhou\/sisu/)
@@ -138,6 +141,11 @@ cp "$src" "$out"
     expect(fs.existsSync(path.join(sisuHome, 'node', 'bin', 'node'))).toBe(true)
     expect(fs.readFileSync(npmLog, 'utf8')).toContain('@stevezhou/sisu')
     expect(fs.existsSync(path.join(home, '.local', 'bin', 'sisu'))).toBe(true)
+    expect(fs.existsSync(path.join(home, '.local', 'bin', 'npm'))).toBe(true)
+    expect(fs.existsSync(path.join(home, '.local', 'bin', 'nmp'))).toBe(true)
+    expect(fs.realpathSync(path.join(home, '.local', 'bin', 'nmp'))).toBe(
+      fs.realpathSync(path.join(sisuHome, 'node', 'bin', 'npm')),
+    )
   } finally {
     fs.rmSync(home, { recursive: true, force: true })
   }

@@ -82,6 +82,46 @@ function writeShim(dest, body) {
   }
 }
 
+function sisuHome(options = {}) {
+  const override = String(options.sisuHome || process.env.SISU_HOME || '').trim()
+  if (override) return override
+  return path.join(options.home || os.homedir(), '.sisu')
+}
+
+function ensureLink(target, dest) {
+  fs.mkdirSync(path.dirname(dest), { recursive: true, mode: 0o755 })
+  try {
+    if (fs.lstatSync(dest)) fs.unlinkSync(dest)
+  } catch {
+    // missing
+  }
+  fs.symlinkSync(path.resolve(target), dest)
+  try {
+    fs.chmodSync(dest, 0o755)
+  } catch {
+    // symlink mode follows the target on most POSIX
+  }
+  return dest
+}
+
+function ensurePrivateNodeShims(options = {}) {
+  if (isWin(options)) return []
+  const nodeBin = path.join(sisuHome(options), 'node', 'bin')
+  const node = path.join(nodeBin, 'node')
+  const npm = path.join(nodeBin, 'npm')
+  const exists = options.exists || ((file) => fs.existsSync(file))
+  if (!exists(node) || !exists(npm)) return []
+  const destDir = userLocalBin(options.home || os.homedir(), options)
+  const shims = [
+    ensureLink(node, path.join(destDir, 'node')),
+    ensureLink(npm, path.join(destDir, 'npm')),
+    ensureLink(npm, path.join(destDir, 'nmp')),
+  ]
+  const npx = path.join(nodeBin, 'npx')
+  if (exists(npx)) shims.push(ensureLink(npx, path.join(destDir, 'npx')))
+  return shims
+}
+
 function ensureUserShim(target, options = {}) {
   if (!target) return null
   const dir = userLocalBin(options.home || os.homedir(), options)
@@ -175,6 +215,11 @@ function installCliPath(options = {}) {
   } catch (error) {
     writes(`sisu: could not install user command (${error instanceof Error ? error.message : String(error)})\n`)
   }
+  try {
+    ensurePrivateNodeShims(options)
+  } catch (error) {
+    writes(`sisu: could not install node/npm commands (${error instanceof Error ? error.message : String(error)})\n`)
+  }
   const localDir = shim ? path.dirname(shim) : userLocalBin(options.home, options)
   try {
     const persisted = persistUserPath(localDir, options)
@@ -192,6 +237,7 @@ function installCliPath(options = {}) {
 }
 
 module.exports = {
+  ensurePrivateNodeShims,
   ensureUserShim,
   globalSisuBin,
   installCliPath,
