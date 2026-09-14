@@ -3,12 +3,14 @@ import os from 'os'
 import path from 'path'
 
 const {
+  ensurePrivateNodeShims,
   ensureUserShim,
   globalSisuBin,
   installCliPath,
   pathContains,
   pathHint,
 } = require('./ensure-cli-path.js') as {
+  ensurePrivateNodeShims: (options?: Record<string, unknown>) => string[]
   ensureUserShim: (target: string, options?: Record<string, unknown>) => string | null
   globalSisuBin: (options?: Record<string, unknown>) => string
   installCliPath: (options?: Record<string, unknown>) => { bin: string; shim: string | null; hint: string }
@@ -30,6 +32,29 @@ it('resolves the global sisu from npm_config_prefix', () => {
     expect(globalSisuBin({ prefix: root, platform: 'linux', exists: (file: string) => file === bin })).toBe(bin)
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+it('links private npm and the nmp typo into ~/.local/bin next to sisu', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-npm-shim-'))
+  const nodeBin = path.join(home, '.sisu', 'node', 'bin')
+  fs.mkdirSync(nodeBin, { recursive: true })
+  fs.writeFileSync(path.join(nodeBin, 'node'), '#!/bin/sh\n')
+  fs.writeFileSync(path.join(nodeBin, 'npm'), '#!/bin/sh\n')
+  fs.writeFileSync(path.join(nodeBin, 'npx'), '#!/bin/sh\n')
+  try {
+    const shims = ensurePrivateNodeShims({ home, platform: 'linux' })
+    const local = path.join(home, '.local', 'bin')
+    expect(shims).toEqual(expect.arrayContaining([
+      path.join(local, 'node'),
+      path.join(local, 'npm'),
+      path.join(local, 'nmp'),
+      path.join(local, 'npx'),
+    ]))
+    expect(fs.realpathSync(path.join(local, 'nmp'))).toBe(fs.realpathSync(path.join(nodeBin, 'npm')))
+    expect(fs.realpathSync(path.join(local, 'npm'))).toBe(fs.realpathSync(path.join(nodeBin, 'npm')))
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
   }
 })
 

@@ -10,6 +10,7 @@ import {
   grokBuildBinaryCandidates,
   migrateGrokScratchToEngine,
   pagerBinaryName,
+  prependToolPath,
   purgeChangelogCache,
   purgeXaiEngineAuth,
   RuntimeUnavailable,
@@ -220,6 +221,28 @@ it('B-lite contract: no SISU_HOME on child, engine home, overwritten XAI_API_KEY
     else process.env.GROK_CODE_XAI_API_KEY = previous.code
     if (previous.def === undefined) delete process.env.GROK_DEFAULT_MODEL
     else process.env.GROK_DEFAULT_MODEL = previous.def
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('puts the private Node bin ahead of PATH so the TUI can run npm', () => {
+  const previousHome = process.env.SISU_HOME
+  const previousPath = process.env.PATH
+  const home = makeHome()
+  const nodeBin = path.join(home, 'node', 'bin')
+  fs.mkdirSync(nodeBin, { recursive: true })
+  fs.writeFileSync(path.join(nodeBin, 'npm'), '#!/bin/sh\n')
+  try {
+    process.env.PATH = '/usr/bin:/bin'
+    const env = sisuGrokBuildEnv()
+    const parts = String(env.PATH || '').split(path.delimiter)
+    expect(parts[0]).toBe(nodeBin)
+    expect(prependToolPath('/usr/bin', home).startsWith(`${nodeBin}${path.delimiter}`)).toBe(true)
+  } finally {
+    if (previousHome === undefined) delete process.env.SISU_HOME
+    else process.env.SISU_HOME = previousHome
+    if (previousPath === undefined) delete process.env.PATH
+    else process.env.PATH = previousPath
     fs.rmSync(home, { recursive: true, force: true })
   }
 })

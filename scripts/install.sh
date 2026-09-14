@@ -111,11 +111,23 @@ resolve_npm() {
   printf '%s\n' "${SISU_HOME}/node/bin/npm"
 }
 
+link_bin() {
+  local src="$1"
+  local name="$2"
+  ln -sfn "$src" "${SISU_HOME}/bin/${name}"
+  ln -sfn "$src" "${HOME}/.local/bin/${name}"
+}
+
 link_private_node_bins() {
   [ -x "${SISU_HOME}/node/bin/node" ] || return 0
-  mkdir -p "${SISU_HOME}/bin"
-  ln -sfn "${SISU_HOME}/node/bin/node" "${SISU_HOME}/bin/node"
-  ln -sfn "${SISU_HOME}/node/bin/npm" "${SISU_HOME}/bin/npm"
+  mkdir -p "${SISU_HOME}/bin" "${HOME}/.local/bin"
+  link_bin "${SISU_HOME}/node/bin/node" node
+  link_bin "${SISU_HOME}/node/bin/npm" npm
+  if [ -x "${SISU_HOME}/node/bin/npx" ]; then
+    link_bin "${SISU_HOME}/node/bin/npx" npx
+  fi
+  # Common typo: nmp → npm
+  link_bin "${SISU_HOME}/node/bin/npm" nmp
 }
 
 ensure_user_path() {
@@ -124,12 +136,17 @@ ensure_user_path() {
     ln -sfn "${SISU_HOME}/bin/sisu" "${HOME}/.local/bin/sisu"
   fi
   local block export_line rc
-  export_line="export PATH=\"${SISU_HOME}/bin:${HOME}/.local/bin:\$PATH\""
+  export_line="export PATH=\"${SISU_HOME}/bin:${SISU_HOME}/node/bin:${HOME}/.local/bin:\$PATH\""
   block="# sisu-cli
 ${export_line}
 # sisu-cli end"
   for rc in "${HOME}/.zprofile" "${HOME}/.zshrc" "${HOME}/.bash_profile" "${HOME}/.bashrc"; do
-    [ -f "$rc" ] || continue
+    if [ ! -f "$rc" ]; then
+      case "$rc" in
+        "${HOME}/.zshrc"|"${HOME}/.zprofile") touch "$rc" ;;
+        *) continue ;;
+      esac
+    fi
     grep -q '# sisu-cli$' "$rc" 2>/dev/null && continue
     printf '\n%s\n' "$block" >> "$rc"
     log "added PATH to ${rc}"
