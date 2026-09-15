@@ -14,6 +14,7 @@ import {
   purgeChangelogCache,
   purgeXaiEngineAuth,
   RuntimeUnavailable,
+  pagerBinaryRunnable,
   pagerStampAllowsSpawn,
   sisuGrokBuildEnv,
   writeSisuGrokConfig,
@@ -268,6 +269,45 @@ it('refuses spawn of an installed pager whose stamp is older than this package',
     expect(pagerStampAllowsSpawn(path.join(home, 'elsewhere', 'xai-grok-pager'))).toBe(true)
     fs.writeFileSync(`${dest}.version`, '0.3.11\n')
     expect(pagerStampAllowsSpawn(dest)).toBe(true)
+  } finally {
+    if (previousHome === undefined) delete process.env.SISU_HOME
+    else process.env.SISU_HOME = previousHome
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('treats GLIBC loader errors as an unrunnable pager', () => {
+  const previousHome = process.env.SISU_HOME
+  const spawn = jest.fn().mockReturnValue({
+    status: 127,
+    stdout: '',
+    stderr:
+      "/root/.sisu/bin/xai-grok-pager: /usr/lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.39' not found (required by /root/.sisu/bin/xai-grok-pager)\n",
+    error: undefined,
+  })
+  const home = makeHome()
+  const dest = path.join(home, 'bin', 'xai-grok-pager')
+  fs.mkdirSync(path.dirname(dest), { recursive: true })
+  fs.writeFileSync(dest, 'elf')
+  try {
+    expect(pagerBinaryRunnable(dest, spawn as never)).toBe(false)
+    expect(spawn).toHaveBeenCalledWith(dest, ['--help'], expect.objectContaining({ encoding: 'utf8' }))
+  } finally {
+    if (previousHome === undefined) delete process.env.SISU_HOME
+    else process.env.SISU_HOME = previousHome
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('treats a pager that starts as runnable', () => {
+  const previousHome = process.env.SISU_HOME
+  const spawn = jest.fn().mockReturnValue({ status: 0, stdout: 'usage', stderr: '', error: undefined })
+  const home = makeHome()
+  const dest = path.join(home, 'bin', 'xai-grok-pager')
+  fs.mkdirSync(path.dirname(dest), { recursive: true })
+  fs.writeFileSync(dest, 'elf')
+  try {
+    expect(pagerBinaryRunnable(dest, spawn as never)).toBe(true)
   } finally {
     if (previousHome === undefined) delete process.env.SISU_HOME
     else process.env.SISU_HOME = previousHome

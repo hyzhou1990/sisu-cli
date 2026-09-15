@@ -188,6 +188,28 @@ export function pagerStampAllowsSpawn(binary: string): boolean {
   return pagerStampMeetsRelease(installedPagerStamp(binary), MIN_PAGER_STAMP)
 }
 
+const PAGER_LOADER_FAIL =
+  /GLIBC_\d|not found \(required by|Exec format error|cannot execute binary file|error while loading shared libraries/i
+
+/** Dynamic linker / glibc mismatches fail before main(). Probe without inheriting the TTY. */
+export function pagerBinaryRunnable(
+  binary: string,
+  spawn: typeof spawnSync = spawnSync,
+): boolean {
+  if (!binary || !fs.existsSync(binary)) return false
+  const result = spawn(binary, ['--help'], {
+    encoding: 'utf8',
+    timeout: 2500,
+    env: { ...process.env, TERM: 'dumb' },
+  })
+  const blob = `${result.stderr || ''}\n${result.stdout || ''}\n${result.error?.message || ''}`
+  if (PAGER_LOADER_FAIL.test(blob)) return false
+  const err = result.error as NodeJS.ErrnoException | undefined
+  if (err && (err.code === 'ENOENT' || err.code === 'EACCES')) return false
+  if ((result.status ?? 0) === 127) return false
+  return true
+}
+
 export function prependToolPath(pathEnv = process.env.PATH || '', home = getSisuHome()): string {
   const extra =
     process.platform === 'win32'
