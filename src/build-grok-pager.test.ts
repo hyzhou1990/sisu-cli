@@ -26,6 +26,9 @@ it('builds linux-x64 pager on Ubuntu 20.04 glibc so AutoDL/old distros can run i
   expect(workflow).toMatch(/protoc-\$\{ver\}-linux-x86_64\.zip/)
   expect(workflow).toMatch(/Do not apt protobuf-compiler here/)
   expect(workflow).toMatch(/old-releases\.ubuntu\.com/)
+  expect(workflow).toMatch(/gcc bug 95189/)
+  expect(workflow).toMatch(/apt_install gcc-10 g\+\+-10/)
+  expect(workflow).toMatch(/export CC=gcc-10 CXX=g\+\+-10/)
 })
 
 it('tag pager-release includes a native windows-latest win32-x64 job', () => {
