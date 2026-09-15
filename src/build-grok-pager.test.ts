@@ -21,6 +21,11 @@ it('builds and packages a win32-x64 pager exe', () => {
 it('builds linux-x64 pager on Ubuntu 20.04 glibc so AutoDL/old distros can run it', () => {
   expect(workflow).toMatch(/platform: linux-x64/)
   expect(workflow).toMatch(/container: ubuntu:20\.04/)
+  expect(workflow).toMatch(/ubuntu:20\.04 container `sh` is dash/)
+  expect(workflow).toMatch(/defaults:\s+run:\s+shell: bash/s)
+  expect(workflow).toMatch(/protoc-\$\{ver\}-linux-x86_64\.zip/)
+  expect(workflow).toMatch(/Do not apt protobuf-compiler here/)
+  expect(workflow).toMatch(/old-releases\.ubuntu\.com/)
 })
 
 it('tag pager-release includes a native windows-latest win32-x64 job', () => {
@@ -32,4 +37,5 @@ it('tag pager-release includes a native windows-latest win32-x64 job', () => {
   expect(workflow).toMatch(/core\.autocrlf false/)
   expect(publish).toMatch(/xai-grok-pager-win32-x64\.br/)
   expect(publish).toMatch(/xai-grok-pager-darwin-arm64\.br/)
+  expect(publish).toMatch(/xai-grok-pager-linux-x64\.br/)
 })

@@ -191,6 +191,30 @@ export function pagerStampAllowsSpawn(binary: string): boolean {
 const PAGER_LOADER_FAIL =
   /GLIBC_\d|not found \(required by|Exec format error|cannot execute binary file|error while loading shared libraries/i
 
+/** First candidate `accessSync` can read. macOS TCC often blocks Desktop; never inherit that. */
+export function firstReadableDir(candidates: Array<string | undefined | null>): string {
+  for (const dir of candidates) {
+    if (!dir) continue
+    try {
+      fs.accessSync(dir, fs.constants.R_OK)
+      return dir
+    } catch {
+      continue
+    }
+  }
+  return os.tmpdir()
+}
+
+/** grok-pager workspace: prefer the caller's cwd when it is readable. */
+export function pagerSpawnCwd(preferred = process.cwd(), home = getSisuHome()): string {
+  return firstReadableDir([preferred, home, os.homedir(), os.tmpdir()])
+}
+
+/** Probe must not inherit a TCC-blocked cwd or the binary never even execs. */
+export function pagerProbeCwd(home = getSisuHome()): string {
+  return firstReadableDir([home, os.homedir(), os.tmpdir()])
+}
+
 /** Dynamic linker / glibc mismatches fail before main(). Probe without inheriting the TTY. */
 export function pagerBinaryRunnable(
   binary: string,
@@ -201,11 +225,12 @@ export function pagerBinaryRunnable(
     encoding: 'utf8',
     timeout: 2500,
     env: { ...process.env, TERM: 'dumb' },
+    cwd: pagerProbeCwd(),
   })
   const blob = `${result.stderr || ''}\n${result.stdout || ''}\n${result.error?.message || ''}`
   if (PAGER_LOADER_FAIL.test(blob)) return false
   const err = result.error as NodeJS.ErrnoException | undefined
-  if (err && (err.code === 'ENOENT' || err.code === 'EACCES')) return false
+  if (err && (err.code === 'ENOENT' || err.code === 'EACCES' || err.code === 'EPERM')) return false
   if ((result.status ?? 0) === 127) return false
   return true
 }

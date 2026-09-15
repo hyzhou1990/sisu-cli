@@ -1,4 +1,8 @@
-import { playMobiusIntro, playTreeIntro, runTui, shouldAnimateSplash, tuiHelp } from './tui'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
+
+import { NATIVE_PAGER_FALLBACK_NOTICE, playMobiusIntro, playTreeIntro, runTui, shouldAnimateSplash, tuiHelp } from './tui'
 
 function scriptedIo(answers: string[]) {
   const written: string[] = []
@@ -339,6 +343,49 @@ describe('sisu tui', () => {
     expect(code).toBe(0)
     expect(pager).toHaveBeenCalled()
     expect(written.join('')).not.toMatch(/native pager cannot start/)
+  })
+
+  it('labels the Node path as a limited fallback when the native pager cannot load', async () => {
+    const { io, written } = scriptedIo(['/quit'])
+    const pager = jest.fn().mockResolvedValue(0)
+    const previousBin = process.env.SISU_GROK_BIN
+    const previousTty = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
+    const fake = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-pager-bin-'))
+    const dest = path.join(fake, 'xai-grok-pager')
+    fs.writeFileSync(dest, 'elf')
+    process.env.SISU_GROK_BIN = dest
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
+    try {
+      const code = await runTui(io, {
+        auth: () => ({
+          token: 'jwt',
+          email: 'ada@sisu.chat',
+          user_id: 'u1',
+          api_base: 'https://www.sisu.chat',
+        }),
+        pagerRunnable: () => false,
+        pager,
+        http: jest.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, complete: true, models: true }),
+        }),
+        animate: false,
+        color: false,
+        columns: 80,
+      })
+      expect(code).toBe(0)
+      expect(pager).toHaveBeenCalled()
+      expect(written.join('')).toContain(NATIVE_PAGER_FALLBACK_NOTICE.trim())
+      expect(written.join('')).toMatch(/limited fallback shell/)
+      expect(written.join('')).not.toMatch(/Using the Node TUI/)
+    } finally {
+      if (previousBin === undefined) delete process.env.SISU_GROK_BIN
+      else process.env.SISU_GROK_BIN = previousBin
+      if (previousTty) Object.defineProperty(process.stdout, 'isTTY', previousTty)
+      else delete (process.stdout as { isTTY?: boolean }).isTTY
+      fs.rmSync(fake, { recursive: true, force: true })
+    }
   })
 
   it('does not fall through to the Node TUI if grok pager keeps exiting 10', async () => {

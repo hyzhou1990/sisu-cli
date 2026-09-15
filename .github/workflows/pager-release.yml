@@ -40,23 +40,39 @@ jobs:
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
     timeout-minutes: 180
+    # ubuntu:20.04 container `sh` is dash; `set -o pipefail` is illegal there
+    # (v0.3.26 linux-x64 died in 1s). GitHub's bash shell already passes -eo pipefail.
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v6
 
       - name: Linux pager build deps
         if: runner.os == 'Linux'
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
           set -euo pipefail
           if command -v brew >/dev/null 2>&1; then
             exit 0
           fi
-          if command -v sudo >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y curl ca-certificates build-essential pkg-config protobuf-compiler git
-          else
-            apt-get update
-            apt-get install -y curl ca-certificates build-essential pkg-config protobuf-compiler git
+          apt_update() {
+            if command -v sudo >/dev/null 2>&1; then sudo apt-get update; else apt-get update; fi
+          }
+          apt_install() {
+            if command -v sudo >/dev/null 2>&1; then sudo apt-get install -y "$@"; else apt-get install -y "$@"; fi
+          }
+          if ! apt_update; then
+            if [ -f /etc/apt/sources.list ]; then
+              sed -i 's|http://archive.ubuntu.com/ubuntu|http://old-releases.ubuntu.com/ubuntu|g' /etc/apt/sources.list
+              sed -i 's|http://security.ubuntu.com/ubuntu|http://old-releases.ubuntu.com/ubuntu|g' /etc/apt/sources.list
+            fi
+            apt_update
           fi
+          # Do not apt protobuf-compiler here: Ubuntu 20.04 ships 3.6, which would
+          # satisfy `command -v protoc` and skip the GitHub-release install below.
+          apt_install curl ca-certificates build-essential pkg-config git unzip
 
       - name: Fetch pinned grok-build and apply SiSu overlay
         run: |
@@ -75,6 +91,18 @@ jobs:
       - name: Install protoc
         run: |
           set -euo pipefail
+          if [ "${{ matrix.platform }}" = "linux-x64" ]; then
+            ver=27.1
+            curl -fsSL -o /tmp/protoc.zip \
+              "https://github.com/protocolbuffers/protobuf/releases/download/v${ver}/protoc-${ver}-linux-x86_64.zip"
+            mkdir -p "$HOME/.local"
+            unzip -o /tmp/protoc.zip -d "$HOME/.local"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+            export PATH="$HOME/.local/bin:$PATH"
+            command -v protoc
+            protoc --version
+            exit 0
+          fi
           if command -v protoc >/dev/null 2>&1; then
             protoc --version
             exit 0
