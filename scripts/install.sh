@@ -118,6 +118,71 @@ link_bin() {
   ln -sfn "$src" "${HOME}/.local/bin/${name}"
 }
 
+# curl|bash cannot export PATH into the parent shell. Put shims in a directory
+# that is already on PATH (root AutoDL: /usr/local/bin) so `sisu` works now.
+first_live_bin_dir() {
+  local dir preferred="/usr/local/bin"
+  if [ -d "$preferred" ] && [ -w "$preferred" ]; then
+    case ":${PATH}:" in
+      *":${preferred}:"*) printf '%s\n' "$preferred"; return 0 ;;
+    esac
+  fi
+  local IFS=':'
+  for dir in $PATH; do
+    [ -n "$dir" ] || continue
+    case "$dir" in
+      .|./.*|/sbin|/usr/sbin|/usr/local/sbin) continue ;;
+    esac
+    [ -d "$dir" ] && [ -w "$dir" ] || continue
+    printf '%s\n' "$dir"
+    return 0
+  done
+  return 1
+}
+
+ours_or_missing() {
+  local dest="$1"
+  if [ ! -e "$dest" ] && [ ! -L "$dest" ]; then
+    return 0
+  fi
+  if [ -L "$dest" ]; then
+    case "$(readlink "$dest" 2>/dev/null || true)" in
+      "${SISU_HOME}"/*) return 0 ;;
+    esac
+  fi
+  return 1
+}
+
+live_link() {
+  local src="$1"
+  local name="$2"
+  local force="${3:-0}"
+  local dir dest
+  dir="$(first_live_bin_dir)" || return 1
+  dest="${dir}/${name}"
+  if [ "$force" != 1 ] && ! ours_or_missing "$dest"; then
+    return 1
+  fi
+  ln -sfn "$src" "$dest"
+  printf '%s\n' "$dest"
+}
+
+link_live_commands() {
+  local dest
+  [ -e "${SISU_HOME}/bin/sisu" ] || [ -L "${SISU_HOME}/bin/sisu" ] || return 0
+  dest="$(live_link "${SISU_HOME}/bin/sisu" sisu 1)" || return 0
+  LIVE_PATH_CMD="$dest"
+  log "on PATH -> ${dest}"
+  if [ -x "${SISU_HOME}/node/bin/node" ]; then
+    live_link "${SISU_HOME}/node/bin/node" node 0 >/dev/null || true
+    live_link "${SISU_HOME}/node/bin/npm" npm 0 >/dev/null || true
+    if [ -x "${SISU_HOME}/node/bin/npx" ]; then
+      live_link "${SISU_HOME}/node/bin/npx" npx 0 >/dev/null || true
+    fi
+    live_link "${SISU_HOME}/node/bin/npm" nmp 0 >/dev/null || true
+  fi
+}
+
 link_private_node_bins() {
   [ -x "${SISU_HOME}/node/bin/node" ] || return 0
   mkdir -p "${SISU_HOME}/bin" "${HOME}/.local/bin"
@@ -159,6 +224,9 @@ ${export_line}
     printf '\n%s\n' "$block" >> "${HOME}/.zprofile"
     log "added PATH to ${HOME}/.zprofile"
   fi
+  if [ -n "${LIVE_PATH_CMD:-}" ]; then
+    return 0
+  fi
   case ":${PATH}:" in
     *":${SISU_HOME}/bin:"*|*:${HOME}/.local/bin:*) ;;
     *)
@@ -179,6 +247,7 @@ main() {
   log "npm -> ${npm}"
   "$npm" install -g --prefix "$SISU_HOME" "$SISU_NPM_PACKAGE"
   link_private_node_bins
+  link_live_commands
   ensure_user_path
   if [ -x "${SISU_HOME}/bin/sisu" ]; then
     log "command -> ${SISU_HOME}/bin/sisu"
@@ -186,4 +255,6 @@ main() {
   log "next: sisu login && sisu"
 }
 
-main "$@"
+if [ "${SISU_INSTALL_LIB:-}" != 1 ]; then
+  main "$@"
+fi

@@ -122,6 +122,65 @@ function ensurePrivateNodeShims(options = {}) {
   return shims
 }
 
+function lexists(file) {
+  try {
+    fs.lstatSync(file)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function firstLiveBinDir(pathEnv = process.env.PATH || '', options = {}) {
+  if (isWin(options)) return ''
+  const isDir =
+    options.isDir ||
+    ((dir) => {
+      try {
+        return fs.statSync(dir).isDirectory()
+      } catch {
+        return false
+      }
+    })
+  const writable =
+    options.writable ||
+    ((dir) => {
+      try {
+        fs.accessSync(dir, fs.constants.W_OK)
+        return true
+      } catch {
+        return false
+      }
+    })
+  const preferred = '/usr/local/bin'
+  if (pathContains(preferred, pathEnv, options) && isDir(preferred) && writable(preferred)) {
+    return preferred
+  }
+  const skip = new Set(['/sbin', '/usr/sbin', '/usr/local/sbin', '.', './'])
+  for (const dir of pathDirs(pathEnv, options)) {
+    if (!dir || skip.has(dir)) continue
+    if (isDir(dir) && writable(dir)) return dir
+  }
+  return ''
+}
+
+function ensureLivePathLink(src, name, options = {}) {
+  if (isWin(options) || !src) return null
+  const dir = firstLiveBinDir(options.pathEnv || process.env.PATH || '', options)
+  if (!dir) return null
+  const dest = path.join(dir, name)
+  const force = name === 'sisu' || options.forceLiveLink
+  if (!force && lexists(dest)) {
+    try {
+      const target = fs.readlinkSync(dest)
+      if (!String(target).startsWith(sisuHome(options))) return null
+    } catch {
+      return null
+    }
+  }
+  return ensureLink(src, dest)
+}
+
 function ensureUserShim(target, options = {}) {
   if (!target) return null
   const dir = userLocalBin(options.home || os.homedir(), options)
@@ -227,18 +286,39 @@ function installCliPath(options = {}) {
   } catch (error) {
     writes(`sisu: could not update user PATH (${error instanceof Error ? error.message : String(error)})\n`)
   }
-  const hint = pathHint(npmBinDir, localDir, options.pathEnv, options)
+  let live = null
+  try {
+    live = ensureLivePathLink(bin, 'sisu', options)
+    if (live) {
+      writes(`sisu: on PATH -> ${live}\n`)
+      const nodeBin = path.join(sisuHome(options), 'node', 'bin')
+      const exists = options.exists || ((file) => fs.existsSync(file))
+      if (exists(path.join(nodeBin, 'node'))) {
+        ensureLivePathLink(path.join(nodeBin, 'node'), 'node', options)
+        ensureLivePathLink(path.join(nodeBin, 'npm'), 'npm', options)
+        ensureLivePathLink(path.join(nodeBin, 'npm'), 'nmp', options)
+        if (exists(path.join(nodeBin, 'npx'))) {
+          ensureLivePathLink(path.join(nodeBin, 'npx'), 'npx', options)
+        }
+      }
+    }
+  } catch (error) {
+    writes(`sisu: could not link onto PATH (${error instanceof Error ? error.message : String(error)})\n`)
+  }
+  const hint = live ? '' : pathHint(npmBinDir, localDir, options.pathEnv, options)
   if (bin) writes(`sisu: command -> ${shim || bin}\n`)
   if (hint) {
     writes('sisu: if `sisu` is not found in this shell, run:\n')
     writes(`  ${hint}\n`)
   }
-  return { bin, shim, hint }
+  return { bin, shim, hint, live }
 }
 
 module.exports = {
+  ensureLivePathLink,
   ensurePrivateNodeShims,
   ensureUserShim,
+  firstLiveBinDir,
   globalSisuBin,
   installCliPath,
   pathContains,
