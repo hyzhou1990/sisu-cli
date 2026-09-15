@@ -14,7 +14,10 @@ import {
   purgeChangelogCache,
   purgeXaiEngineAuth,
   RuntimeUnavailable,
+  firstReadableDir,
   pagerBinaryRunnable,
+  pagerProbeCwd,
+  pagerSpawnCwd,
   pagerStampAllowsSpawn,
   sisuGrokBuildEnv,
   writeSisuGrokConfig,
@@ -276,6 +279,21 @@ it('refuses spawn of an installed pager whose stamp is older than this package',
   }
 })
 
+it('picks the first readable directory and skips an unreadable preferred cwd', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-cwd-ok-'))
+  const blocked = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-cwd-block-'))
+  fs.chmodSync(blocked, 0)
+  try {
+    expect(firstReadableDir([blocked, home])).toBe(home)
+    expect(pagerSpawnCwd(blocked, home)).toBe(home)
+    expect(pagerProbeCwd(home)).toBe(home)
+  } finally {
+    fs.chmodSync(blocked, 0o700)
+    fs.rmSync(blocked, { recursive: true, force: true })
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
 it('treats GLIBC loader errors as an unrunnable pager', () => {
   const previousHome = process.env.SISU_HOME
   const spawn = jest.fn().mockReturnValue({
@@ -291,7 +309,11 @@ it('treats GLIBC loader errors as an unrunnable pager', () => {
   fs.writeFileSync(dest, 'elf')
   try {
     expect(pagerBinaryRunnable(dest, spawn as never)).toBe(false)
-    expect(spawn).toHaveBeenCalledWith(dest, ['--help'], expect.objectContaining({ encoding: 'utf8' }))
+    expect(spawn).toHaveBeenCalledWith(
+      dest,
+      ['--help'],
+      expect.objectContaining({ encoding: 'utf8', cwd: pagerProbeCwd() }),
+    )
   } finally {
     if (previousHome === undefined) delete process.env.SISU_HOME
     else process.env.SISU_HOME = previousHome

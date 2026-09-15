@@ -4,7 +4,7 @@ import os from 'os'
 import path from 'path'
 import { SISU_CLIENT_VERSION } from './client'
 import { defaultHttp, type HttpClient } from './http'
-import { comparePagerStamp } from './runtime/launch'
+import { comparePagerStamp, firstReadableDir } from './runtime/launch'
 import { getSisuHome } from './store'
 
 export type PagerInstallResult = {
@@ -46,15 +46,7 @@ export function npmCliPath(home = getSisuHome()): string {
 
 /** npm calls process.cwd() at startup. macOS TCC often blocks Desktop, so never inherit it. */
 export function npmInstallCwd(home = getSisuHome()): string {
-  for (const dir of [home, os.homedir(), os.tmpdir()]) {
-    try {
-      fs.accessSync(dir, fs.constants.R_OK)
-      return dir
-    } catch {
-      continue
-    }
-  }
-  return os.tmpdir()
+  return firstReadableDir([home, os.homedir(), os.tmpdir()])
 }
 
 export async function fetchLatestVersion(http: HttpClient = defaultHttp): Promise<string> {

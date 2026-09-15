@@ -11,6 +11,7 @@ import {
   findGrokBuildBinary,
   migrateGrokScratchToEngine,
   pagerBinaryRunnable,
+  pagerSpawnCwd,
   pagerStampAllowsSpawn,
   purgeChangelogCache,
   RuntimeUnavailable,
@@ -32,6 +33,10 @@ export interface LineIo {
 
 /** Pager exits with this code so the host runs `sisu login` and respawns. */
 export const SISU_LOGIN_EXIT_CODE = 10
+
+/** Node/readline path is a degraded shell, not a second product. */
+export const NATIVE_PAGER_FALLBACK_NOTICE =
+  'sisu: native TUI cannot start on this machine. Using a limited fallback shell — not the full SiSu TUI. Try `sisu update`.\n'
 
 export interface TuiDeps {
   http: HttpClient
@@ -300,7 +305,7 @@ export async function runTui(
     runtimeOk = false
     io.write(
       `SiSu runtime is not available at ${account.api_base}/api/runtime. ` +
-        `This CLI will not fall back to xAI. Using the Node TUI.\n`,
+        `This CLI will not fall back to xAI. Using a limited fallback shell — not the full SiSu TUI.\n`,
     )
   }
 
@@ -335,7 +340,7 @@ export async function runTui(
     pagerStampAllowsSpawn(grokBin) &&
     !runnable(grokBin)
   ) {
-    io.write('sisu: native pager cannot start on this system. Using the Node TUI.\n')
+    io.write(NATIVE_PAGER_FALLBACK_NOTICE)
   }
 
   if (usePager && (deps.spawnGrokPager || !deps.pager)) {
@@ -381,7 +386,7 @@ export async function runTui(
         const child = spawn(grokBin, pagerArgs, {
           stdio: 'inherit',
           env,
-          cwd: process.cwd(),
+          cwd: pagerSpawnCwd(),
         })
         return new Promise<number>((resolve) => {
           const finish = (code: number) => {
