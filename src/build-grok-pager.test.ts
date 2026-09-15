@@ -18,6 +18,11 @@ it('builds and packages a win32-x64 pager exe', () => {
   expect(script).not.toMatch(/require\('\$\{ROOT\}\/package\.json'\)/)
 })
 
+it('builds linux-x64 pager on Ubuntu 20.04 glibc so AutoDL/old distros can run it', () => {
+  expect(workflow).toMatch(/platform: linux-x64/)
+  expect(workflow).toMatch(/container: ubuntu:20\.04/)
+})
+
 it('tag pager-release includes a native windows-latest win32-x64 job', () => {
   expect(workflow).toMatch(/build-pager-win32/)
   expect(workflow).toMatch(/runs-on: windows-latest/)

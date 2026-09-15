@@ -32,14 +32,31 @@ jobs:
             cargo_target: ''
           - platform: linux-x64
             os: ubuntu-latest
+            container: ubuntu:20.04
             cargo_target: ''
           - platform: linux-arm64
             os: ubuntu-24.04-arm
             cargo_target: ''
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v6
+
+      - name: Linux pager build deps
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          if command -v brew >/dev/null 2>&1; then
+            exit 0
+          fi
+          if command -v sudo >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y curl ca-certificates build-essential pkg-config protobuf-compiler git
+          else
+            apt-get update
+            apt-get install -y curl ca-certificates build-essential pkg-config protobuf-compiler git
+          fi
 
       - name: Fetch pinned grok-build and apply SiSu overlay
         run: |
@@ -58,11 +75,18 @@ jobs:
       - name: Install protoc
         run: |
           set -euo pipefail
+          if command -v protoc >/dev/null 2>&1; then
+            protoc --version
+            exit 0
+          fi
           if command -v brew >/dev/null 2>&1; then
             brew install protobuf
-          else
+          elif command -v sudo >/dev/null 2>&1; then
             sudo apt-get update
             sudo apt-get install -y protobuf-compiler
+          else
+            apt-get update
+            apt-get install -y protobuf-compiler
           fi
 
       - name: Build and package .br

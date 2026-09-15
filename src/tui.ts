@@ -10,6 +10,7 @@ import {
   assertRuntimeAvailable,
   findGrokBuildBinary,
   migrateGrokScratchToEngine,
+  pagerBinaryRunnable,
   pagerStampAllowsSpawn,
   purgeChangelogCache,
   RuntimeUnavailable,
@@ -52,6 +53,8 @@ export interface TuiDeps {
   spawnGrokPager?: (args?: string[]) => Promise<number>
   /** Extra argv for the stamped pager, e.g. `['--resume', sessionId]`. */
   pagerArgs?: string[]
+  /** Test double: whether the native pager binary can exec on this OS. */
+  pagerRunnable?: (binary: string) => boolean
   probe?: typeof assertRuntimeAvailable
 }
 
@@ -316,6 +319,25 @@ export async function runTui(
     }
   }
 
+  const grokBin = findGrokBuildBinary()
+  const runnable = deps.pagerRunnable ?? pagerBinaryRunnable
+  const nativePagerOk = Boolean(
+    deps.spawnGrokPager ||
+      (grokBin &&
+        process.stdout.isTTY &&
+        pagerStampAllowsSpawn(grokBin) &&
+        runnable(grokBin)),
+  )
+  if (
+    grokBin &&
+    process.stdout.isTTY &&
+    !deps.spawnGrokPager &&
+    pagerStampAllowsSpawn(grokBin) &&
+    !runnable(grokBin)
+  ) {
+    io.write('sisu: native pager cannot start on this system. Using the Node TUI.\n')
+  }
+
   if (usePager && (deps.spawnGrokPager || !deps.pager)) {
     const pagerArgs = deps.pagerArgs ?? []
     const spawnOnce =
@@ -330,6 +352,9 @@ export async function runTui(
           io.write(
             'sisu: refusing to spawn a pager older than this CLI. Reinstall the pager or run `sisu` after postinstall.\n',
           )
+          return Promise.resolve(null as number | null)
+        }
+        if (!runnable(grokBin)) {
           return Promise.resolve(null as number | null)
         }
         const home = getSisuHome()
@@ -367,7 +392,7 @@ export async function runTui(
         })
       })
 
-    if (deps.spawnGrokPager || (findGrokBuildBinary() && process.stdout.isTTY)) {
+    if (deps.spawnGrokPager || nativePagerOk) {
       // Login handoff: pager exits 10 → host web login at most once → respawn
       // grok-pager. Never fall through to the Node TUI while the grok binary ran.
       let retriedWithSession = false

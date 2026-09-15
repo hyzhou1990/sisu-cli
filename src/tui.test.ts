@@ -315,6 +315,32 @@ describe('sisu tui', () => {
     expect(written.join('')).not.toMatch(/session already saved/)
   })
 
+  it('falls through to the Node TUI when the native pager cannot load', async () => {
+    const { io, written } = scriptedIo(['/quit'])
+    const pager = jest.fn().mockResolvedValue(0)
+    const code = await runTui(io, {
+      auth: () => ({
+        token: 'jwt',
+        email: 'ada@sisu.chat',
+        user_id: 'u1',
+        api_base: 'https://www.sisu.chat',
+      }),
+      pagerRunnable: () => false,
+      pager,
+      http: jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, complete: true, models: true }),
+      }),
+      animate: false,
+      color: false,
+      columns: 80,
+    })
+    expect(code).toBe(0)
+    expect(pager).toHaveBeenCalled()
+    expect(written.join('')).not.toMatch(/native pager cannot start/)
+  })
+
   it('does not fall through to the Node TUI if grok pager keeps exiting 10', async () => {
     const { io, written } = scriptedIo([])
     const spawnGrokPager = jest.fn().mockResolvedValue(10)
