@@ -13,7 +13,12 @@ const {
   ensurePrivateNodeShims: (options?: Record<string, unknown>) => string[]
   ensureUserShim: (target: string, options?: Record<string, unknown>) => string | null
   globalSisuBin: (options?: Record<string, unknown>) => string
-  installCliPath: (options?: Record<string, unknown>) => { bin: string; shim: string | null; hint: string }
+  installCliPath: (options?: Record<string, unknown>) => {
+    bin: string
+    shim: string | null
+    hint: string
+    live?: string | null
+  }
   pathContains: (dir: string, pathEnv?: string) => boolean
   pathHint: (
     npmBin: string,
@@ -81,6 +86,32 @@ it('prints a PATH export when neither npm bin nor ~/.local/bin is on PATH', () =
   expect(hint).toContain('/opt/npm/bin')
   expect(hint).toMatch(/^export PATH=/)
   expect(pathHint('/usr/bin', '/usr/bin', '/usr/bin:/bin')).toBe('')
+})
+
+it('links sisu into a writable directory already on PATH', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-live-home-'))
+  const live = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-live-bin-'))
+  const prefix = path.join(home, 'npm')
+  const bin = path.join(prefix, 'bin', 'sisu')
+  fs.mkdirSync(path.dirname(bin), { recursive: true })
+  fs.writeFileSync(bin, '#!/usr/bin/env node\n')
+  const lines: string[] = []
+  try {
+    const result = installCliPath({
+      prefix,
+      home,
+      platform: 'linux',
+      pathEnv: `${live}:/usr/bin:/bin`,
+      write: (text: string) => lines.push(text),
+    })
+    expect(result.live).toBe(path.join(live, 'sisu'))
+    expect(fs.lstatSync(path.join(live, 'sisu')).isSymbolicLink()).toBe(true)
+    expect(lines.join('')).toMatch(/on PATH -> /)
+    expect(lines.join('')).not.toMatch(/if `sisu` is not found/)
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+    fs.rmSync(live, { recursive: true, force: true })
+  }
 })
 
 it('installCliPath writes the command location and PATH hint', () => {
