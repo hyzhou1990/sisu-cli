@@ -178,7 +178,58 @@ it('writes Windows wrappers into %LOCALAPPDATA%\\sisu\\bin that call the origina
     const sh = path.join(localAppData, 'sisu', 'bin', 'sisu')
     expect(fs.existsSync(sh)).toBe(true)
     expect(fs.readFileSync(sh, 'utf8')).toMatch(/^#!/)
-    expect(fs.readFileSync(path.join(localAppData, 'sisu', 'bin', 'sisu.ps1'), 'utf8')).toContain(target)
+    expect(fs.existsSync(path.join(localAppData, 'sisu', 'bin', 'sisu.ps1'))).toBe(false)
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('removes a sisu.ps1 left behind by an older install', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-win-stale-'))
+  const localAppData = path.join(home, 'AppData', 'Local')
+  const binDir = path.join(localAppData, 'sisu', 'bin')
+  const target = path.join(home, 'AppData', 'Roaming', 'npm', 'sisu.cmd')
+  fs.mkdirSync(path.dirname(target), { recursive: true })
+  fs.mkdirSync(binDir, { recursive: true })
+  fs.writeFileSync(target, '@echo off\r\n')
+  fs.writeFileSync(path.join(binDir, 'sisu.ps1'), '& "sisu.cmd" @args\r\n')
+  try {
+    ensureUserShim(target, { home, platform: 'win32', localAppData })
+    expect(fs.existsSync(path.join(binDir, 'sisu.ps1'))).toBe(false)
+    expect(fs.existsSync(path.join(binDir, 'sisu.cmd'))).toBe(true)
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('reports a sisu.ps1 it could not delete instead of claiming success', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-win-stuck-'))
+  const localAppData = path.join(home, 'AppData', 'Local')
+  const prefix = path.join(home, 'AppData', 'Roaming', 'npm')
+  fs.mkdirSync(prefix, { recursive: true })
+  fs.writeFileSync(path.join(prefix, 'sisu.cmd'), '@echo off\r\n')
+  // A directory at that path cannot be removed with unlinkSync.
+  fs.mkdirSync(path.join(prefix, 'sisu.ps1'), { recursive: true })
+  const lines: string[] = []
+  let userPath = 'C:\\Windows\\system32'
+  try {
+    installCliPath({
+      prefix,
+      home,
+      localAppData,
+      platform: 'win32',
+      pathEnv: 'C:\\Windows\\system32',
+      readUserPath: () => userPath,
+      writeUserPath: (value: string) => {
+        userPath = value
+      },
+      write: (text: string) => lines.push(text),
+    })
+    expect(lines.join('')).not.toMatch(/dropped npm's sisu\.ps1/)
+    expect(lines.join('')).toContain('could not delete')
+    expect(lines.join('')).toContain('Set-ExecutionPolicy RemoteSigned')
+    // The failure must not stop the PATH setup.
+    expect(userPath.split(';')).toContain(path.join(localAppData, 'sisu', 'bin'))
   } finally {
     fs.rmSync(home, { recursive: true, force: true })
   }
@@ -203,6 +254,7 @@ it('installCliPath on Windows persists the shim directory on the user PATH once'
   const bin = path.join(prefix, 'sisu.cmd')
   fs.mkdirSync(prefix, { recursive: true })
   fs.writeFileSync(bin, '@echo off\r\n')
+  fs.writeFileSync(path.join(prefix, 'sisu.ps1'), '& "sisu.cmd" @args\r\n')
   const lines: string[] = []
   let userPath = 'C:\\Windows\\system32'
   try {
@@ -220,6 +272,8 @@ it('installCliPath on Windows persists the shim directory on the user PATH once'
     })
     const shimDir = path.join(localAppData, 'sisu', 'bin')
     expect(first.shim).toBe(path.join(shimDir, 'sisu.cmd'))
+    expect(fs.existsSync(path.join(prefix, 'sisu.ps1'))).toBe(false)
+    expect(lines.join('')).toMatch(/dropped npm's sisu\.ps1/)
     expect(userPath.split(';')).toContain(shimDir)
     expect(lines.join('')).toMatch(/set PATH=/)
     expect(lines.join('')).toContain('$env:Path')

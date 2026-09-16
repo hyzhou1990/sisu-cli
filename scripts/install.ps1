@@ -96,6 +96,19 @@ Write-Sisu "npm -> $npm"
 & $npm install -g --prefix $SisuHome $NpmPackage
 if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
 
+# PowerShell resolves `sisu` to sisu.ps1 ahead of sisu.cmd, and the default
+# Restricted policy refuses to run scripts. npm recreates its shim every
+# install, so this has to run after npm, not only in the package postinstall.
+# A failure must not skip the PATH setup below.
+$ps1Shim = Join-Path $SisuHome 'sisu.ps1'
+if (Test-Path $ps1Shim) {
+    try { Remove-Item -Force -ErrorAction Stop $ps1Shim } catch { }
+    if (Test-Path $ps1Shim) {
+        Write-Sisu "could not delete $ps1Shim"
+        Write-Sisu "if ``sisu`` reports a script error, delete that file or run: Set-ExecutionPolicy RemoteSigned -Scope CurrentUser"
+    }
+}
+
 $nodeDir = Join-Path $SisuHome 'node'
 Add-UserPath $SisuHome
 if (Test-Path $nodeDir) { Add-UserPath $nodeDir }

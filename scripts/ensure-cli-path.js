@@ -82,6 +82,18 @@ function writeShim(dest, body) {
   }
 }
 
+/** Removes `dest`. Returns true once it is gone, false when it survives (EPERM,
+ *  EISDIR, a lock, a read-only file) so callers do not report a false success.
+ */
+function removeShim(dest) {
+  try {
+    fs.unlinkSync(dest)
+    return true
+  } catch {
+    return !fs.existsSync(dest)
+  }
+}
+
 function sisuHome(options = {}) {
   const override = String(options.sisuHome || process.env.SISU_HOME || '').trim()
   if (override) return override
@@ -203,20 +215,35 @@ function ensureUserShim(target, options = {}) {
   return dest
 }
 
+/** `sisu.cmd` and the Git Bash `sisu` only. PowerShell resolves `sisu` to
+ *  `sisu.ps1` ahead of `sisu.cmd`, and the default Restricted policy refuses to
+ *  run scripts, so writing (or leaving) a .ps1 shim makes `sisu` unrunnable.
+ */
 function writeWindowsWrappers(target, dir, options = {}) {
   const exists = options.exists || ((file) => fs.existsSync(file))
   const cmdTarget = String(target).replace(/"/g, '')
   const cmdDest = path.join(dir, 'sisu.cmd')
   writeShim(cmdDest, `@echo off\r\ncall "${cmdTarget}" %*\r\n`)
 
-  const ps1Source = cmdTarget.replace(/\.cmd$/i, '.ps1')
-  const ps1Target = exists(ps1Source) ? ps1Source : cmdTarget
-  writeShim(path.join(dir, 'sisu.ps1'), `& "${ps1Target.replace(/"/g, '')}" @args\r\n`)
-
   const shSource = cmdTarget.replace(/\.cmd$/i, '')
   const shTarget = exists(shSource) ? shSource : cmdTarget
   writeShim(path.join(dir, 'sisu'), `#!/bin/sh\nexec "${toGitBashPath(shTarget).replace(/"/g, '')}" "$@"\n`)
+  removeShim(path.join(dir, 'sisu.ps1'))
   return cmdDest
+}
+
+/** npm writes `sisu.ps1` next to its `sisu.cmd` on Windows and recreates it on
+ *  every install, so drop it and let PowerShell fall through to `sisu.cmd`.
+ *  Returns null when there is nothing to drop, else `{ path, removed }` — a
+ *  surviving `.ps1` leaves `sisu` unrunnable, so that has to be reported.
+ */
+function removePowerShellShim(bin, options = {}) {
+  if (!isWin(options) || !bin) return null
+  const ps1 = String(bin).replace(/\.cmd$/i, '.ps1')
+  if (ps1 === String(bin)) return null
+  const exists = options.exists || ((file) => fs.existsSync(file))
+  if (!exists(ps1)) return null
+  return { path: ps1, removed: removeShim(ps1) }
 }
 
 function pathHint(npmBin, localBin, pathEnv = process.env.PATH || '', options = {}) {
@@ -268,6 +295,12 @@ function installCliPath(options = {}) {
   const writes = options.write || ((text) => process.stdout.write(text))
   const bin = globalSisuBin(options)
   const npmBinDir = bin ? path.dirname(bin) : ''
+  let dropped = null
+  try {
+    dropped = removePowerShellShim(bin, options)
+  } catch (error) {
+    writes(`sisu: could not drop the PowerShell shim (${error instanceof Error ? error.message : String(error)})\n`)
+  }
   let shim = null
   try {
     shim = ensureUserShim(bin, options)
@@ -307,6 +340,12 @@ function installCliPath(options = {}) {
   }
   const hint = live ? '' : pathHint(npmBinDir, localDir, options.pathEnv, options)
   if (bin) writes(`sisu: command -> ${shim || bin}\n`)
+  if (dropped?.removed) {
+    writes("sisu: dropped npm's sisu.ps1 (script policy blocks it; sisu.cmd is used)\n")
+  } else if (dropped) {
+    writes(`sisu: could not delete ${dropped.path}; PowerShell may refuse to run \`sisu\`\n`)
+    writes('sisu: if it does, delete that file or run: Set-ExecutionPolicy RemoteSigned -Scope CurrentUser\n')
+  }
   if (hint) {
     writes('sisu: if `sisu` is not found in this shell, run:\n')
     writes(`  ${hint}\n`)
@@ -324,6 +363,7 @@ module.exports = {
   pathContains,
   pathHint,
   persistUserPath,
+  removePowerShellShim,
   userLocalBin,
 }
 
