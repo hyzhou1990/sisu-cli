@@ -35,6 +35,62 @@ function makeHome(): string {
   return home
 }
 
+it('sisuGrokBuildEnv prepends to a "Path"-spelled PATH instead of replacing it', () => {
+  // Windows spells the variable `Path`, and `{ ...process.env }` is a plain
+  // object, so a bare `env.PATH` read misses. That used to replace PATH with
+  // the private-Node dirs only, leaving the pager unable to resolve
+  // powershell/sh/git: every run_terminal_command failed with
+  // `Terminal error: IO Error: program not found`.
+  const previousHome = process.env.SISU_HOME
+  const previousPath = process.env.PATH
+  const previousAltPath = process.env.Path
+  const inherited = ['C:\\Windows\\System32', 'C:\\Program Files\\Git\\bin'].join(path.delimiter)
+  const home = makeHome()
+  const descriptor = Object.getOwnPropertyDescriptor(process, 'platform')
+  try {
+    delete process.env.PATH
+    process.env.Path = inherited
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+    fs.mkdirSync(path.join(home, 'node'), { recursive: true })
+    fs.mkdirSync(path.join(home, 'bin'), { recursive: true })
+
+    const env = sisuGrokBuildEnv()
+
+    const pathKeys = Object.keys(env).filter((key) => key.toUpperCase() === 'PATH')
+    expect(pathKeys).toHaveLength(1)
+    const value = String(env[pathKeys[0]])
+    for (const dir of inherited.split(path.delimiter)) expect(value).toContain(dir)
+    expect(value).toContain(path.join(home, 'node'))
+    expect(value).toContain(path.join(home, 'bin'))
+  } finally {
+    if (descriptor) Object.defineProperty(process, 'platform', descriptor)
+    if (previousHome === undefined) delete process.env.SISU_HOME
+    else process.env.SISU_HOME = previousHome
+    delete process.env.Path
+    if (previousPath !== undefined) process.env.PATH = previousPath
+    if (previousAltPath !== undefined) process.env.Path = previousAltPath
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('sisuGrokBuildEnv removes the shell xAI key whatever its casing', () => {
+  const previousHome = process.env.SISU_HOME
+  const previousLower = process.env.xai_api_key
+  const home = makeHome()
+  try {
+    process.env.xai_api_key = 'sk-xai-from-shell'
+    const env = sisuGrokBuildEnv()
+    expect(Object.keys(env).filter((key) => key.toUpperCase() === 'XAI_API_KEY')).toHaveLength(1)
+    expect(String(env.XAI_API_KEY || '')).not.toBe('sk-xai-from-shell')
+  } finally {
+    if (previousHome === undefined) delete process.env.SISU_HOME
+    else process.env.SISU_HOME = previousHome
+    if (previousLower === undefined) delete process.env.xai_api_key
+    else process.env.xai_api_key = previousLower
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
 it('sisuGrokBuildEnv stamps a stable SISU_CONVERSATION_ID', () => {
   const previousHome = process.env.SISU_HOME
   const previousConv = process.env.SISU_CONVERSATION_ID

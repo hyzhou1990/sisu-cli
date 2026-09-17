@@ -235,6 +235,42 @@ export function pagerBinaryRunnable(
   return true
 }
 
+/** Windows environment names are case-insensitive, but `{ ...process.env }` is a
+ *  plain object keyed by the inherited spelling (`Path`). A bare `env.PATH`
+ *  read, write, or delete therefore misses: on Windows the read returned
+ *  undefined, so PATH was replaced by the private-Node dirs instead of being
+ *  prepended to, and every child process lost System32 — the pager could no
+ *  longer resolve powershell/sh/git and every terminal command failed with
+ *  `program not found`.
+ */
+function envKeyOf(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const upper = name.toUpperCase()
+  return Object.keys(env).find((key) => key.toUpperCase() === upper)
+}
+
+function readEnv(env: NodeJS.ProcessEnv, name: string): string {
+  const key = envKeyOf(env, name)
+  return (key && env[key]) || ''
+}
+
+/** Deletes `name` whatever its casing, so a child cannot inherit it. */
+function deleteEnv(env: NodeJS.ProcessEnv, name: string): void {
+  const key = envKeyOf(env, name)
+  if (key) delete env[key]
+}
+
+/** Writes `name` under the spelling already present and drops other-cased
+ *  duplicates, so Windows cannot hand a child the shorter of two values.
+ */
+function setEnv(env: NodeJS.ProcessEnv, name: string, value: string): void {
+  const upper = name.toUpperCase()
+  const key = envKeyOf(env, name) || name
+  for (const other of Object.keys(env)) {
+    if (other !== key && other.toUpperCase() === upper) delete env[other]
+  }
+  env[key] = value
+}
+
 export function prependToolPath(pathEnv = process.env.PATH || '', home = getSisuHome()): string {
   const extra =
     process.platform === 'win32'
@@ -265,56 +301,58 @@ export function sisuGrokBuildEnv(): NodeJS.ProcessEnv {
   const apiBase = auth?.api_base || process.env.SISU_API_BASE || DEFAULT_API_BASE
   const runtime = sisuRuntimeApiBase(apiBase)
   const env = { ...process.env }
-  delete env.SISU_HOME
-  delete env.GROK_CODE_XAI_API_KEY
-  delete env.GROK_DEFAULT_MODEL
-  delete env.SISU_TOKEN
+  deleteEnv(env, 'SISU_HOME')
+  deleteEnv(env, 'GROK_CODE_XAI_API_KEY')
+  deleteEnv(env, 'GROK_DEFAULT_MODEL')
+  deleteEnv(env, 'SISU_TOKEN')
   // Must not set GROK_DISABLE_API_KEY_AUTH: AuthManager.vet_cached hides
   // auth_mode=api_key snapshots, so the pager thinks there is no session
   // and exits 10 (host login) in a loop.
-  delete env.GROK_DISABLE_API_KEY_AUTH
+  deleteEnv(env, 'GROK_DISABLE_API_KEY_AUTH')
   if (accessPointBfullEnabled()) {
-    delete env.XAI_API_KEY
-    env.SISU_TOKEN = auth?.token || ''
+    deleteEnv(env, 'XAI_API_KEY')
+    setEnv(env, 'SISU_TOKEN', auth?.token || '')
   } else {
-    env.XAI_API_KEY = auth?.token || ''
+    setEnv(env, 'XAI_API_KEY', auth?.token || '')
   }
   // grok-build's cached_token path reads GROK_AUTH / GROK_HOME auth.json.
   // Without a disk session it falls through to accounts.x.ai. Seed an ApiKey
   // snapshot of the SiSu JWT so the pager never starts grok.com OAuth.
-  delete env.GROK_AUTH
+  deleteEnv(env, 'GROK_AUTH')
   if (auth?.token) {
-    env.GROK_AUTH = JSON.stringify({
-      key: auth.token,
-      auth_mode: 'api_key',
-      create_time: new Date().toISOString(),
-      user_id: auth.user_id || 'sisu',
-      email: auth.email || undefined,
-    })
+    setEnv(
+      env,
+      'GROK_AUTH',
+      JSON.stringify({
+        key: auth.token,
+        auth_mode: 'api_key',
+        create_time: new Date().toISOString(),
+        user_id: auth.user_id || 'sisu',
+        email: auth.email || undefined,
+      }),
+    )
   }
   purgeXaiEngineAuth(engine)
-  env.PATH = prependToolPath(env.PATH || '', getSisuHome())
-  return {
-    ...env,
-    SISU_ACCESS_POINT: '1',
-    GROK_HOME: engine,
-    GROK_AUTH_PATH: path.join(engine, 'auth.json'),
-    SISU_AUTH_PATH: sisuAuthPath(),
-    SISU_ACCOUNT_EMAIL: auth?.email || '',
-    SISU_ACCOUNT_PLAN: auth?.plan_code || '',
-    SISU_API_BASE: apiBase,
-    SISU_CLIENT_VERSION,
-    GROK_SYSTEM_PROMPT_LABEL: 'SiSu',
-    SISU_CONVERSATION_ID: ensureConversationId(),
-    GROK_XAI_API_BASE_URL: runtime,
-    XAI_API_BASE_URL: runtime,
-    GROK_MODELS_BASE_URL: runtime,
-    GROK_MODELS_LIST_URL: `${runtime}/models`,
-    GROK_CLI_CHAT_PROXY_BASE_URL: runtime,
-    GROK_DISABLE_CLI_CHAT_PROXY: '1',
-    GROK_TELEMETRY_ENABLED: '0',
-    GROK_CHANGELOG_OFFLINE: '1',
-  }
+  setEnv(env, 'PATH', prependToolPath(readEnv(env, 'PATH'), getSisuHome()))
+  setEnv(env, 'SISU_ACCESS_POINT', '1')
+  setEnv(env, 'GROK_HOME', engine)
+  setEnv(env, 'GROK_AUTH_PATH', path.join(engine, 'auth.json'))
+  setEnv(env, 'SISU_AUTH_PATH', sisuAuthPath())
+  setEnv(env, 'SISU_ACCOUNT_EMAIL', auth?.email || '')
+  setEnv(env, 'SISU_ACCOUNT_PLAN', auth?.plan_code || '')
+  setEnv(env, 'SISU_API_BASE', apiBase)
+  setEnv(env, 'SISU_CLIENT_VERSION', SISU_CLIENT_VERSION)
+  setEnv(env, 'GROK_SYSTEM_PROMPT_LABEL', 'SiSu')
+  setEnv(env, 'SISU_CONVERSATION_ID', ensureConversationId())
+  setEnv(env, 'GROK_XAI_API_BASE_URL', runtime)
+  setEnv(env, 'XAI_API_BASE_URL', runtime)
+  setEnv(env, 'GROK_MODELS_BASE_URL', runtime)
+  setEnv(env, 'GROK_MODELS_LIST_URL', `${runtime}/models`)
+  setEnv(env, 'GROK_CLI_CHAT_PROXY_BASE_URL', runtime)
+  setEnv(env, 'GROK_DISABLE_CLI_CHAT_PROXY', '1')
+  setEnv(env, 'GROK_TELEMETRY_ENABLED', '0')
+  setEnv(env, 'GROK_CHANGELOG_OFFLINE', '1')
+  return env
 }
 
 export function launchGrokBuildHeadless(prompt: string, cwd: string): { status: number; stdout: string; stderr: string; binary: string | null } {
