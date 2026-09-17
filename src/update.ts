@@ -44,6 +44,55 @@ export function npmCliPath(home = getSisuHome()): string {
   return process.platform === 'win32' ? 'npm.cmd' : 'npm'
 }
 
+/** First `name` on PATH, using Windows path rules regardless of the host that
+ *  runs this (CI is Linux). `process.env` resolves `PATH` case-insensitively,
+ *  but the variable can be absent, so try both spellings.
+ */
+function resolveOnWindowsPath(
+  name: string,
+  options: { pathEnv?: string; exists?: (file: string) => boolean } = {},
+): string | null {
+  const pathEnv = options.pathEnv ?? process.env.PATH ?? process.env.Path ?? ''
+  const exists = options.exists || ((file: string) => fs.existsSync(file))
+  for (const dir of pathEnv.split(';')) {
+    if (!dir) continue
+    const candidate = path.win32.join(dir, name)
+    if (exists(candidate)) return candidate
+  }
+  return null
+}
+
+/** What to actually execute for `npm install`, as `(file, args)`.
+ *
+ *  Windows ships npm as a batch shim, and Node refuses to spawn `.cmd`/`.bat`
+ *  without a shell (the CVE-2024-27980 fix, Node 18.20.2 / 20.12.2 / 21.7.3),
+ *  so `spawnSync('npm.cmd', …)` fails with EINVAL and `sisu update` never
+ *  runs. The shim only starts `<dir>\node_modules\npm\bin\npm-cli.js` with the
+ *  sibling `node.exe`, so run that entry point directly instead: no shell, no
+ *  batch re-parsing, and argv reaches npm unmangled — a `--prefix` containing
+ *  a space still arrives as one argument.
+ */
+export function npmInvocation(
+  npm: string,
+  args: string[],
+  options: { platform?: NodeJS.Platform; pathEnv?: string; exists?: (file: string) => boolean } = {},
+): { file: string; args: string[] } {
+  const platform = options.platform || process.platform
+  if (platform !== 'win32') return { file: npm, args }
+  if (!/\.(cmd|bat)$/i.test(npm)) return { file: npm, args }
+  const exists = options.exists || ((file: string) => fs.existsSync(file))
+  // `path.win32` on purpose: these are Windows paths, and the host running this
+  // may not be Windows (CI is Linux), where `path` would split them wrongly.
+  const win = path.win32
+  const shim = win.isAbsolute(npm) ? npm : resolveOnWindowsPath(npm, options)
+  if (!shim) return { file: npm, args }
+  const dir = win.dirname(shim)
+  const node = win.join(dir, 'node.exe')
+  const cli = win.join(dir, 'node_modules', 'npm', 'bin', 'npm-cli.js')
+  if (exists(node) && exists(cli)) return { file: node, args: [cli, ...args] }
+  return { file: npm, args }
+}
+
 /** npm calls process.cwd() at startup. macOS TCC often blocks Desktop, so never inherit it. */
 export function npmInstallCwd(home = getSisuHome()): string {
   return firstReadableDir([home, os.homedir(), os.tmpdir()])
@@ -73,12 +122,17 @@ export function installNpmPackage(
   const prefix = options.prefix === undefined ? npmGlobalPrefix() : options.prefix
   const args = ['install', '-g', `@stevezhou/sisu@${version}`]
   if (prefix) args.push('--prefix', prefix)
-  const result = (options.spawn || spawnSync)(npm, args, {
+  const invocation = npmInvocation(npm, args)
+  const result = (options.spawn || spawnSync)(invocation.file, invocation.args, {
     stdio: 'inherit',
     cwd: options.cwd || npmInstallCwd(),
   })
   if ((result.status ?? 1) !== 0) {
-    throw new Error(`npm install failed (${result.status ?? 'spawn'})`)
+    // EINVAL/ENOENT here reaches the user as a bare "spawn", which says nothing
+    // about what to fix. Surface the errno.
+    const err = result.error as NodeJS.ErrnoException | undefined
+    const detail = err ? ` ${err.code || err.message}` : ''
+    throw new Error(`npm install failed (${result.status ?? 'spawn'}${detail})`)
   }
 }
 
@@ -109,7 +163,13 @@ export async function runUpdate(options: {
       await options.installPackage(plan.to)
     } catch (error) {
       writeErr(`sisu update: ${error instanceof Error ? error.message : String(error)}\n`)
-      writeErr('sisu update: run `cd ~ && npm install -g @stevezhou/sisu` then `sisu --version`\n')
+      // `cd ~` is not a Windows path, and on Windows the reliable repair is the
+      // site installer (it also restores the private Node and the PATH entry).
+      writeErr(
+        process.platform === 'win32'
+          ? 'sisu update: re-run the installer from https://www.sisu.chat/cli, or: npm install -g @stevezhou/sisu\n'
+          : 'sisu update: run `cd ~ && npm install -g @stevezhou/sisu` then `sisu --version`\n',
+      )
       return 1
     }
     options.write(`sisu: cli ${plan.to} installed (pager via postinstall). restart sisu.\n`)
