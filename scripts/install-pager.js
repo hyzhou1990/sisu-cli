@@ -125,6 +125,7 @@ async function installPager(options = {}) {
   if (!version) return { ok: false, reason: 'missing package version' }
   const url = options.url || releaseAssetUrl(version, key)
   try {
+    process.stdout.write(`sisu: downloading TUI pager for ${key}\n`)
     const payload = await download(url)
     writeBinary(decodePayload(payload), dest)
     writePagerStamp(dest, version)

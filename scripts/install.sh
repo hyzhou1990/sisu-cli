@@ -18,9 +18,17 @@ download() {
   local url="$1"
   local dest="$2"
   if need_cmd curl; then
-    curl -fsSL "$url" -o "$dest"
+    if [ -t 2 ]; then
+      curl -fL --progress-bar "$url" -o "$dest"
+    else
+      curl -fsSL "$url" -o "$dest"
+    fi
   elif need_cmd wget; then
-    wget -qO "$dest" "$url"
+    if [ -t 2 ]; then
+      wget --progress=bar:force -O "$dest" "$url"
+    else
+      wget -qO "$dest" "$url"
+    fi
   else
     die "need curl or wget"
   fi
@@ -87,9 +95,12 @@ install_private_node() {
   url="${SISU_NODE_DIST}/v${SISU_NODE_VERSION}/${tarball}"
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/sisu-node.XXXXXX")"
   log "installing Node ${SISU_NODE_VERSION} into ${SISU_HOME}/node (user-local, not system npm)"
+  log "downloading Node ${SISU_NODE_VERSION} (~30MB)"
   download "$url" "${tmp}/${tarball}"
   download "${SISU_NODE_DIST}/v${SISU_NODE_VERSION}/SHASUMS256.txt" "${tmp}/SHASUMS256.txt"
+  log "verifying Node checksum"
   verify_sha256 "$tmp" "$tarball"
+  log "extracting Node"
   tar -xzf "${tmp}/${tarball}" -C "$tmp"
   mkdir -p "$SISU_HOME"
   rm -rf "${SISU_HOME}/node"
@@ -238,6 +249,7 @@ ${export_line}
 
 main() {
   mkdir -p "$SISU_HOME"
+  log "installing ${SISU_NPM_PACKAGE} into ${SISU_HOME}"
   local npm
   npm="$(resolve_npm)"
   if [ -x "${SISU_HOME}/node/bin/node" ]; then
@@ -245,6 +257,7 @@ main() {
     export npm_config_scripts_prepend_node_path=true
   fi
   log "npm -> ${npm}"
+  log "installing package (this may take a minute)"
   "$npm" install -g --prefix "$SISU_HOME" "$SISU_NPM_PACKAGE"
   link_private_node_bins
   link_live_commands

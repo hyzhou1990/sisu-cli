@@ -1,4 +1,4 @@
-import { execFileSync } from 'child_process'
+import { execFileSync, spawnSync } from 'child_process'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -25,6 +25,10 @@ it('ships curl and PowerShell installers that never apt/brew/choco a system Node
   expect(sh).toMatch(/--prefix/)
   expect(sh).toMatch(/@stevezhou\/sisu/)
   expect(sh).toMatch(/npm_config_scripts_prepend_node_path/)
+  expect(sh).toMatch(/downloading Node/)
+  expect(sh).toMatch(/verifying Node checksum/)
+  expect(sh).toMatch(/extracting Node/)
+  expect(sh).toMatch(/installing package/)
   expect(sh).toMatch(/\$\{SISU_HOME\}\/node\/bin:\$\{PATH\}/)
   expect(sh).toMatch(/link_bin "\$\{SISU_HOME\}\/node\/bin\/npm" npm/)
   expect(sh).toMatch(/link_bin "\$\{SISU_HOME\}\/node\/bin\/npm" nmp/)
@@ -34,6 +38,10 @@ it('ships curl and PowerShell installers that never apt/brew/choco a system Node
   expect(ps1).toMatch(/@stevezhou\/sisu/)
   expect(ps1).toMatch(/UseBasicParsing/)
   expect(ps1).toMatch(/Use-SisuNodeOnPath/)
+  expect(ps1).toMatch(/downloading Node/)
+  expect(ps1).toMatch(/verifying Node checksum/)
+  expect(ps1).toMatch(/extracting Node/)
+  expect(ps1).toMatch(/installing package/)
   expect(ps1).toMatch(/npm_config_scripts_prepend_node_path/)
   expect(ps1).toMatch(/node\.exe/)
   expect(ps1.indexOf('Use-SisuNodeOnPath')).toBeLessThan(ps1.indexOf('install -g'))
@@ -83,6 +91,45 @@ it('uses an existing Node 20+ and does not download a runtime', () => {
   }
 })
 
+it('prints package install stages when Node 20+ is already on PATH', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-install-progress-'))
+  const bindir = path.join(home, 'bin')
+  const sisuHome = path.join(home, '.sisu')
+  const npmLog = path.join(home, 'npm.log')
+  fs.mkdirSync(bindir, { recursive: true })
+  writeExec(
+    path.join(bindir, 'node'),
+    '#!/bin/sh\n[ "$1" = "-p" ] && echo 22 && exit 0\necho v22.23.2\n',
+  )
+  writeExec(
+    path.join(bindir, 'npm'),
+    `#!/bin/sh\nprintf '%s\\n' "$@" > "${npmLog}"\nmkdir -p "${sisuHome}/bin"\nprintf '#!/bin/sh\\necho sisu\\n' > "${sisuHome}/bin/sisu"\nchmod +x "${sisuHome}/bin/sisu"\n`,
+  )
+  writeExec(
+    path.join(bindir, 'curl'),
+    '#!/bin/sh\necho curl-should-not-run >&2\nexit 1\n',
+  )
+  try {
+    const result = spawnSync('bash', [installSh], {
+      encoding: 'utf8',
+      env: {
+        HOME: home,
+        PATH: `${bindir}${path.delimiter}/usr/bin:/bin`,
+        SISU_HOME: sisuHome,
+        SISU_NPM_PACKAGE: '@stevezhou/sisu',
+      },
+    })
+    expect(result.status).toBe(0)
+    expect(result.stderr).toMatch(/sisu: installing @stevezhou\/sisu into /)
+    expect(result.stderr).toMatch(/sisu: installing package/)
+    expect(result.stderr).toMatch(/sisu: npm -> /)
+    expect(result.stderr).toMatch(/sisu: next: sisu login/)
+    expect(result.stderr).not.toMatch(/downloading Node/)
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
 it('downloads a user-local Node into ~/.sisu/node when node is missing', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-install-bootstrap-'))
   const bindir = path.join(home, 'bin')
@@ -117,7 +164,7 @@ url=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     -o) out="$2"; shift 2 ;;
-    -fsSL|-f|-s|-S|-L) shift ;;
+    -fsSL|-f|-s|-S|-L|--progress-bar) shift ;;
     *) url="$1"; shift ;;
   esac
 done
