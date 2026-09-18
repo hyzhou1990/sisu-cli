@@ -3,8 +3,18 @@ import os from 'os'
 import path from 'path'
 import zlib from 'zlib'
 // The installer is a shipped CommonJS file (npm postinstall). Drive that file.
-const { SUPPORTED, decodePayload, installPager, pagerUnavailableReason, releaseAssetUrl, writeBinary } = require('./install-pager.js') as {
-  SUPPORTED: Set<string>
+const {
+  NPM_PAGER_PLATFORMS,
+  decodePayload,
+  installPager,
+  pagerNpmName,
+  pagerPackageManifest,
+  pagerTarballUrl,
+  pagerUnavailableReason,
+  platformKey,
+  writeBinary,
+} = require('./install-pager.js') as {
+  NPM_PAGER_PLATFORMS: string[]
   decodePayload: (buf: Buffer) => Buffer
   installPager: (options?: Record<string, unknown>) => Promise<{
     ok: boolean
@@ -12,61 +22,89 @@ const { SUPPORTED, decodePayload, installPager, pagerUnavailableReason, releaseA
     skipped?: boolean
     reason?: string
     url?: string
+    packageDir?: string
   }>
+  pagerNpmName: (key: string) => string
+  pagerPackageManifest: (key: string, version: string) => { os: string[]; cpu: string[]; name: string }
+  pagerTarballUrl: (key: string, version: string, options?: { registry?: string }) => string
   pagerUnavailableReason: (key: string, version?: string) => string
-  releaseAssetUrl: (version: string, key: string) => string
+  platformKey: (env?: NodeJS.ProcessEnv, nodeArch?: string, nodePlatform?: string) => string
   writeBinary: (bytes: Buffer, dest: string) => void
 }
 
 it('npm pack includes Apache grok-build NOTICE files', () => {
-  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as { files: string[] }
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as {
+    files: string[]
+    version: string
+    optionalDependencies?: Record<string, string>
+  }
   expect(pkg.files).toContain('third_party/grok-build')
   expect(pkg.files).toContain('NOTICE')
+  expect(pkg.optionalDependencies?.['@stevezhou/sisu-pager-win32-x64']).toBe(pkg.version)
+  expect(pkg.optionalDependencies?.['@stevezhou/sisu-pager-darwin-arm64']).toBe(pkg.version)
   const root = path.join(__dirname, '..', 'third_party', 'grok-build')
   expect(fs.existsSync(path.join(root, 'LICENSE'))).toBe(true)
   expect(fs.existsSync(path.join(root, 'NOTICE'))).toBe(true)
   expect(fs.existsSync(path.join(root, 'THIRD-PARTY-NOTICES'))).toBe(true)
 })
 
-it('lists darwin-arm64 plus linux, darwin-x64, and win32-x64 pager platforms', () => {
-  expect([...SUPPORTED].sort()).toEqual(
-    ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64'].sort(),
+it('ships npm platform packages for darwin-arm64, linux, and win32-x64', () => {
+  expect([...NPM_PAGER_PLATFORMS].sort()).toEqual(
+    ['darwin-arm64', 'linux-arm64', 'linux-x64', 'win32-x64'].sort(),
   )
-  for (const key of ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64'] as const) {
-    expect(releaseAssetUrl('0.3.0', key)).toBe(
-      `https://github.com/hyzhou1990/sisu-cli/releases/download/v0.3.0/xai-grok-pager-${key}.br`,
-    )
-  }
+  const win = pagerPackageManifest('win32-x64', '0.3.33')
+  expect(win).toEqual(
+    expect.objectContaining({
+      name: '@stevezhou/sisu-pager-win32-x64',
+      os: ['win32'],
+      cpu: ['x64'],
+    }),
+  )
+  expect(pagerNpmName('darwin-arm64')).toBe('@stevezhou/sisu-pager-darwin-arm64')
+  expect(pagerTarballUrl('win32-x64', '0.3.33', { registry: 'https://registry.npmmirror.com' })).toBe(
+    'https://registry.npmmirror.com/@stevezhou%2fsisu-pager-win32-x64/-/sisu-pager-win32-x64-0.3.33.tgz',
+  )
 })
 
-it('tells unsupported platforms the Node TUI is the fallback', async () => {
+it('selects win32-x64 on 64-bit Windows even when Node is ia32', () => {
+  expect(
+    platformKey({ PROCESSOR_ARCHITECTURE: 'x86', PROCESSOR_ARCHITEW6432: 'AMD64' }, 'ia32', 'win32'),
+  ).toBe('win32-x64')
+  expect(platformKey({ PROCESSOR_ARCHITECTURE: 'AMD64' }, 'x64', 'win32')).toBe('win32-x64')
+  expect(platformKey({ PROCESSOR_ARCHITECTURE: 'x86' }, 'ia32', 'win32')).toBe('win32-ia32')
+  expect(platformKey({}, 'arm64', 'darwin')).toBe('darwin-arm64')
+})
+
+it('fails closed on unsupported platforms instead of Node TUI', async () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')) as { version: string }
-  expect(releaseAssetUrl(pkg.version, 'darwin-arm64')).toBe(
-    `https://github.com/hyzhou1990/sisu-cli/releases/download/v${pkg.version}/xai-grok-pager-darwin-arm64.br`,
-  )
-  expect(pagerUnavailableReason('freebsd-x64', pkg.version)).toMatch(/Node TUI/)
-  expect(pagerUnavailableReason('freebsd-x64', pkg.version)).toContain(pkg.version)
+  expect(pagerUnavailableReason('freebsd-x64', pkg.version)).not.toMatch(/Node TUI/)
+  expect(pagerUnavailableReason('win32-ia32', pkg.version)).toContain('win32-ia32')
   const result = await installPager({ platform: 'freebsd-x64', version: pkg.version })
   expect(result.ok).toBe(false)
-  expect(result.skipped).toBe(true)
+  expect(result.skipped).toBe(false)
   expect(result.reason).toBe(pagerUnavailableReason('freebsd-x64', pkg.version))
 })
 
-it('treats a missing release asset as Node TUI fallback', async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-pager-404-'))
+it('installs from an npm platform package directory without GitHub', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-pager-npm-'))
   const previous = process.env.SISU_HOME
   process.env.SISU_HOME = home
+  const pkgDir = path.join(home, 'pkg')
+  fs.mkdirSync(pkgDir)
+  const raw = Buffer.from('npm-pager-bytes')
+  fs.writeFileSync(path.join(pkgDir, 'xai-grok-pager-win32-x64.br'), zlib.brotliCompressSync(raw))
   try {
     const result = await installPager({
-      platform: 'darwin-x64',
-      version: '0.0.0-missing',
-      dest: path.join(home, 'bin', 'xai-grok-pager'),
+      platform: 'win32-x64',
+      version: '0.3.33',
+      dest: path.join(home, 'bin', 'xai-grok-pager.exe'),
+      packageDir: pkgDir,
       force: true,
     })
-    expect(result.ok).toBe(false)
-    expect(result.skipped).toBe(true)
-    expect(result.reason).toBe(pagerUnavailableReason('darwin-x64', '0.0.0-missing'))
-    expect(result.url).toContain('v0.0.0-missing/xai-grok-pager-darwin-x64.br')
+    expect(result.ok).toBe(true)
+    expect(result.packageDir).toBe(pkgDir)
+    expect(fs.readFileSync(String(result.dest)).equals(raw)).toBe(true)
+    expect(fs.readFileSync(`${result.dest}.version`, 'utf8').trim()).toBe('0.3.33')
   } finally {
     if (previous === undefined) delete process.env.SISU_HOME
     else process.env.SISU_HOME = previous
@@ -138,9 +176,6 @@ it('installs a win32-x64 pager payload as xai-grok-pager.exe', async () => {
     expect(String(result.dest)).toMatch(/xai-grok-pager\.exe$/)
     expect(fs.readFileSync(String(result.dest)).equals(raw)).toBe(true)
     expect(fs.readFileSync(`${result.dest}.version`, 'utf8').trim()).toBe('0.3.22')
-    expect(releaseAssetUrl('0.3.22', 'win32-x64')).toBe(
-      'https://github.com/hyzhou1990/sisu-cli/releases/download/v0.3.22/xai-grok-pager-win32-x64.br',
-    )
   } finally {
     if (previous === undefined) delete process.env.SISU_HOME
     else process.env.SISU_HOME = previous
@@ -164,9 +199,6 @@ it('installs from a local .br into ~/.sisu/bin', async () => {
     })
     expect(result.ok).toBe(true)
     expect(fs.readFileSync(String(result.dest)).equals(raw)).toBe(true)
-    expect(releaseAssetUrl('0.2.2', 'darwin-arm64')).toBe(
-      'https://github.com/hyzhou1990/sisu-cli/releases/download/v0.2.2/xai-grok-pager-darwin-arm64.br',
-    )
     const dest = path.join(home, 'bin', 'copy')
     writeBinary(raw, dest)
     expect(fs.readFileSync(dest).equals(raw)).toBe(true)

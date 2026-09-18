@@ -319,35 +319,47 @@ describe('sisu tui', () => {
     expect(written.join('')).not.toMatch(/session already saved/)
   })
 
-  it('falls through to the Node TUI when the native pager cannot load', async () => {
-    const { io, written } = scriptedIo(['/quit'])
-    const pager = jest.fn().mockResolvedValue(0)
-    const code = await runTui(io, {
-      auth: () => ({
-        token: 'jwt',
-        email: 'ada@sisu.chat',
-        user_id: 'u1',
-        api_base: 'https://www.sisu.chat',
-      }),
-      pagerRunnable: () => false,
-      pager,
-      http: jest.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({ ok: true, complete: true, models: true }),
-      }),
-      animate: false,
-      color: false,
-      columns: 80,
-    })
-    expect(code).toBe(0)
-    expect(pager).toHaveBeenCalled()
-    expect(written.join('')).not.toMatch(/native pager cannot start/)
+  it('exits when the native pager cannot load instead of opening the fallback shell', async () => {
+    const { io, written } = scriptedIo([])
+    const previousBin = process.env.SISU_GROK_BIN
+    const previousTty = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
+    const fake = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-pager-missing-'))
+    const dest = path.join(fake, 'xai-grok-pager')
+    fs.writeFileSync(dest, 'elf')
+    process.env.SISU_GROK_BIN = dest
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
+    try {
+      const code = await runTui(io, {
+        auth: () => ({
+          token: 'jwt',
+          email: 'ada@sisu.chat',
+          user_id: 'u1',
+          api_base: 'https://www.sisu.chat',
+        }),
+        pagerRunnable: () => false,
+        http: jest.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, complete: true, models: true }),
+        }),
+        animate: false,
+        color: false,
+        columns: 80,
+      })
+      expect(code).toBe(1)
+      expect(written.join('')).toContain(NATIVE_PAGER_FALLBACK_NOTICE.trim())
+      expect(written.join('')).not.toMatch(/fallback shell — not the full SiSu TUI/)
+    } finally {
+      if (previousBin === undefined) delete process.env.SISU_GROK_BIN
+      else process.env.SISU_GROK_BIN = previousBin
+      if (previousTty) Object.defineProperty(process.stdout, 'isTTY', previousTty)
+      else delete (process.stdout as { isTTY?: boolean }).isTTY
+      fs.rmSync(fake, { recursive: true, force: true })
+    }
   })
 
-  it('labels the Node path as a limited fallback when the native pager cannot load', async () => {
-    const { io, written } = scriptedIo(['/quit'])
-    const pager = jest.fn().mockResolvedValue(0)
+  it('tells the user to reinstall when a native pager binary cannot exec', async () => {
+    const { io, written } = scriptedIo([])
     const previousBin = process.env.SISU_GROK_BIN
     const previousTty = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
     const fake = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-pager-bin-'))
@@ -364,7 +376,6 @@ describe('sisu tui', () => {
           api_base: 'https://www.sisu.chat',
         }),
         pagerRunnable: () => false,
-        pager,
         http: jest.fn().mockResolvedValue({
           ok: true,
           status: 200,
@@ -374,11 +385,9 @@ describe('sisu tui', () => {
         color: false,
         columns: 80,
       })
-      expect(code).toBe(0)
-      expect(pager).toHaveBeenCalled()
+      expect(code).toBe(1)
       expect(written.join('')).toContain(NATIVE_PAGER_FALLBACK_NOTICE.trim())
-      expect(written.join('')).toMatch(/limited fallback shell/)
-      expect(written.join('')).not.toMatch(/Using the Node TUI/)
+      expect(written.join('')).toMatch(/sisu update/)
     } finally {
       if (previousBin === undefined) delete process.env.SISU_GROK_BIN
       else process.env.SISU_GROK_BIN = previousBin

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-/** Best-effort: fetch the grok-build pager like @xai-official/grok postinstall.
- *  Never fail `npm install` — Node TUI still works without the binary.
+/** Install the stamped TUI pager from the npm platform package (or registry tarball).
+ *  Missing pager is a failed install — not a silent Node TUI fallback.
  */
 const { installPager } = require('./install-pager')
 const { installCliPath } = require('./ensure-cli-path')
@@ -13,13 +13,17 @@ try {
 
 installPager().then(
   (result) => {
-    if (result.ok && !result.skipped) {
-      process.stdout.write(`sisu: pager -> ${result.dest}\n`)
-    } else if (!result.ok && result.reason) {
-      process.stdout.write(`sisu: ${result.reason} (Node TUI still works)\n`)
+    if (result.ok) {
+      if (!result.skipped) process.stdout.write(`sisu: pager -> ${result.dest}\n`)
+      else if (result.reason) process.stdout.write(`sisu: ${result.reason}\n`)
+      process.exit(0)
     }
+    process.stderr.write(`sisu: ${result.reason || 'pager install failed'}\n`)
+    process.stderr.write('sisu: native TUI is required; re-run npm install -g @stevezhou/sisu\n')
+    process.exit(1)
   },
   (error) => {
-    process.stdout.write(`sisu: pager download skipped (${error instanceof Error ? error.message : String(error)})\n`)
+    process.stderr.write(`sisu: pager install failed (${error instanceof Error ? error.message : String(error)})\n`)
+    process.exit(1)
   },
 )

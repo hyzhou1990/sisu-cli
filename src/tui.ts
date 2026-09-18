@@ -34,9 +34,9 @@ export interface LineIo {
 /** Pager exits with this code so the host runs `sisu login` and respawns. */
 export const SISU_LOGIN_EXIT_CODE = 10
 
-/** Node/readline path is a degraded shell, not a second product. */
+/** Native pager missing is a failed launch, not a second product. */
 export const NATIVE_PAGER_FALLBACK_NOTICE =
-  'sisu: native TUI cannot start on this machine. Using a limited fallback shell — not the full SiSu TUI. Try `sisu update`.\n'
+  'sisu: native TUI cannot start on this machine. Run `sisu update` or reinstall @stevezhou/sisu. This CLI will not open the fallback shell.\n'
 
 export interface TuiDeps {
   http: HttpClient
@@ -341,6 +341,19 @@ export async function runTui(
     !runnable(grokBin)
   ) {
     io.write(NATIVE_PAGER_FALLBACK_NOTICE)
+    if (!deps.pager) return 1
+  }
+
+  if (
+    runtimeOk &&
+    !deps.pager &&
+    !deps.spawnGrokPager &&
+    process.stdout.isTTY &&
+    process.env.SISU_TUI_STATIC !== '1' &&
+    !nativePagerOk
+  ) {
+    io.write(NATIVE_PAGER_FALLBACK_NOTICE)
+    return 1
   }
 
   if (usePager && (deps.spawnGrokPager || !deps.pager)) {
