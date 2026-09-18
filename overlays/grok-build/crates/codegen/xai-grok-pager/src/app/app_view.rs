@@ -1714,7 +1714,10 @@ impl AppView {
             reconnect_pending: false,
             startup_warnings: Vec::new(),
             is_api_key_auth: false,
-            pending_update_version: None,
+            pending_update_version: std::env::var("SISU_UPDATE_AVAILABLE")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
             foreign_resume_launch_generation: 0,
             foreign_resume_launch: None,
             quit_for_update: false,

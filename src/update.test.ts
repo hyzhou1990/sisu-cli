@@ -2,12 +2,54 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 
-import { installNpmPackage, npmGlobalPrefix, npmInstallCwd, npmInvocation, planUpdate } from './update'
+import {
+  formatUpdateNotice,
+  installNpmPackage,
+  maybeLatestUpdate,
+  npmGlobalPrefix,
+  npmInstallCwd,
+  npmInvocation,
+  planUpdate,
+} from './update'
 
 it('plans a CLI upgrade when npm latest is newer than this process', () => {
   expect(planUpdate('0.3.17', '0.3.18')).toEqual({ action: 'upgrade', from: '0.3.17', to: '0.3.18' })
   expect(planUpdate('0.3.18', '0.3.18')).toEqual({ action: 'pager', version: '0.3.18' })
   expect(planUpdate('0.3.18', null)).toEqual({ action: 'upgrade', from: '0.3.18', to: 'latest' })
+})
+
+it('formats a one-line update notice only when latest is newer', () => {
+  expect(formatUpdateNotice('0.3.33', '0.3.34')).toBe(
+    'sisu: 0.3.33 → 0.3.34 available. Run sisu update.\n',
+  )
+  expect(formatUpdateNotice('0.3.34', '0.3.34')).toBeNull()
+})
+
+it('returns the newer npm version from maybeLatestUpdate', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-update-check-'))
+  try {
+    const latest = await maybeLatestUpdate({
+      current: '0.3.33',
+      home,
+      fetchLatest: async () => '0.3.34',
+    })
+    expect(latest).toBe('0.3.34')
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('skips the update check when SISU_SKIP_UPDATE_CHECK=1', async () => {
+  const previous = process.env.SISU_SKIP_UPDATE_CHECK
+  process.env.SISU_SKIP_UPDATE_CHECK = '1'
+  try {
+    await expect(
+      maybeLatestUpdate({ current: '0.3.33', fetchLatest: async () => '0.3.34' }),
+    ).resolves.toBeNull()
+  } finally {
+    if (previous === undefined) delete process.env.SISU_SKIP_UPDATE_CHECK
+    else process.env.SISU_SKIP_UPDATE_CHECK = previous
+  }
 })
 
 it('resolves the npm --prefix from a unix global install layout', () => {

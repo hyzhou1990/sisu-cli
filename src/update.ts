@@ -98,8 +98,18 @@ export function npmInstallCwd(home = getSisuHome()): string {
   return firstReadableDir([home, os.homedir(), os.tmpdir()])
 }
 
+export function npmLatestUrl(): string {
+  const registry = (process.env.npm_config_registry || 'https://registry.npmjs.org').replace(/\/+$/, '')
+  return `${registry}/@stevezhou/sisu/latest`
+}
+
+export function formatUpdateNotice(current: string, latest: string): string | null {
+  if (comparePagerStamp(latest, current) <= 0) return null
+  return `sisu: ${current} → ${latest} available. Run sisu update.\n`
+}
+
 export async function fetchLatestVersion(http: HttpClient = defaultHttp): Promise<string> {
-  const response = await http('https://registry.npmjs.org/@stevezhou/sisu/latest', {
+  const response = await http(npmLatestUrl(), {
     headers: { Accept: 'application/json' },
   })
   if (!response.ok) throw new Error(`npm registry ${response.status}`)
@@ -133,6 +143,78 @@ export function installNpmPackage(
     const err = result.error as NodeJS.ErrnoException | undefined
     const detail = err ? ` ${err.code || err.message}` : ''
     throw new Error(`npm install failed (${result.status ?? 'spawn'}${detail})`)
+  }
+}
+
+const UPDATE_CHECK_MS = 1500
+const UPDATE_CACHE_TTL_MS = 6 * 60 * 60 * 1000
+
+function updateCachePath(home = getSisuHome()): string {
+  return path.join(home, 'update-check.json')
+}
+
+export function readCachedLatest(
+  now = Date.now(),
+  home = getSisuHome(),
+): string | null {
+  try {
+    const raw = JSON.parse(fs.readFileSync(updateCachePath(home), 'utf8')) as {
+      latest?: string
+      at?: number
+    }
+    if (!raw.latest || typeof raw.at !== 'number') return null
+    if (now - raw.at > UPDATE_CACHE_TTL_MS) return null
+    return raw.latest
+  } catch {
+    return null
+  }
+}
+
+export function writeCachedLatest(latest: string, now = Date.now(), home = getSisuHome()): void {
+  try {
+    fs.mkdirSync(home, { recursive: true, mode: 0o700 })
+    fs.writeFileSync(
+      updateCachePath(home),
+      `${JSON.stringify({ latest, at: now })}\n`,
+      { encoding: 'utf8', mode: 0o600 },
+    )
+  } catch {
+    // cache is optional
+  }
+}
+
+export async function maybeLatestUpdate(
+  options: {
+    current?: string
+    fetchLatest?: () => Promise<string>
+    now?: number
+    home?: string
+    timeoutMs?: number
+    skip?: boolean
+  } = {},
+): Promise<string | null> {
+  if (options.skip || process.env.SISU_SKIP_UPDATE_CHECK === '1') return null
+  const current = options.current || SISU_CLIENT_VERSION
+  const home = options.home || getSisuHome()
+  const cached = readCachedLatest(options.now, home)
+  if (cached) return formatUpdateNotice(current, cached) ? cached : null
+  const fetchLatest = options.fetchLatest
+  if (!fetchLatest) return null
+  const timeoutMs = options.timeoutMs ?? UPDATE_CHECK_MS
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const latest = await Promise.race([
+      fetchLatest(),
+      new Promise<string>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('timeout')), timeoutMs)
+      }),
+    ])
+    writeCachedLatest(latest, options.now, home)
+    return formatUpdateNotice(current, latest) ? latest : null
+  } catch {
+    return null
+  } finally {
+    if (timer) clearTimeout(timer)
   }
 }
 

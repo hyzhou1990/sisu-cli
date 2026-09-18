@@ -13,6 +13,32 @@ function Write-Sisu([string]$Message) {
     Write-Host "sisu: $Message"
 }
 
+function Get-CurlExe {
+    $cmd = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    return $null
+}
+
+function Download-SisuFile([string]$Url, [string]$Dest, [bool]$ShowProgress) {
+    $curl = Get-CurlExe
+    if ($curl) {
+        if ($ShowProgress) {
+            & $curl -fL -# -o $Dest $Url
+        } else {
+            & $curl -fsSL -o $Dest $Url
+        }
+        if ($LASTEXITCODE -ne 0) { throw "download failed: $Url" }
+        return
+    }
+    $previous = $ProgressPreference
+    if ($ShowProgress) { $ProgressPreference = 'Continue' }
+    try {
+        Invoke-WebRequest -Uri $Url -OutFile $Dest -UseBasicParsing
+    } finally {
+        $ProgressPreference = $previous
+    }
+}
+
 function Get-NodeMajor([string]$NodeExe) {
     try {
         $raw = & $NodeExe -p "process.versions.node.split('.')[0]" 2>$null
@@ -44,10 +70,12 @@ function Install-PrivateNode {
     Write-Sisu "installing Node $NodeVersion into $SisuHome\node (user-local, not system npm)"
     Write-Sisu "downloading Node $NodeVersion (~30MB)"
     $zipPath = Join-Path $tmp $zipName
-    Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+    Download-SisuFile -Url $url -Dest $zipPath -ShowProgress $true
     Write-Sisu "verifying Node checksum"
-    $sums = Invoke-WebRequest -Uri "$NodeDist/v$NodeVersion/SHASUMS256.txt" -UseBasicParsing
-    $expected = ($sums.Content -split "`n" | Where-Object { $_ -match [regex]::Escape($zipName) } | Select-Object -First 1)
+    $sumsPath = Join-Path $tmp 'SHASUMS256.txt'
+    Download-SisuFile -Url "$NodeDist/v$NodeVersion/SHASUMS256.txt" -Dest $sumsPath -ShowProgress $false
+    $sums = Get-Content -Raw $sumsPath
+    $expected = ($sums -split "`n" | Where-Object { $_ -match [regex]::Escape($zipName) } | Select-Object -First 1)
     if (-not $expected) { throw "no checksum for $zipName" }
     $want = ($expected -split '\s+')[0].ToLowerInvariant()
     $got = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -121,7 +149,6 @@ $shimDir = Join-Path $env:LOCALAPPDATA 'sisu\bin'
 if (Test-Path $shimDir) { Add-UserPath $shimDir }
 Write-Sisu "added $SisuHome to user PATH"
 
-Write-Sisu "command -> $(Join-Path $SisuHome 'sisu.cmd')"
-Write-Sisu "if ``sisu`` is not found in this shell, run:"
-Write-Sisu "  `$env:Path = `"$SisuHome;$nodeDir;`" + `$env:Path"
-Write-Sisu "next: sisu login ; sisu"
+$sisuCmd = Join-Path $SisuHome 'sisu.cmd'
+Write-Sisu "command -> $sisuCmd"
+Write-Sisu "next: $sisuCmd login ; $sisuCmd"

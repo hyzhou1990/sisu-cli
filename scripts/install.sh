@@ -17,14 +17,15 @@ need_cmd() { command -v "$1" >/dev/null 2>&1; }
 download() {
   local url="$1"
   local dest="$2"
+  local show_progress="${3:-0}"
   if need_cmd curl; then
-    if [ -t 2 ]; then
-      curl -fL --progress-bar "$url" -o "$dest"
+    if [ "$show_progress" = 1 ]; then
+      curl -fL -# "$url" -o "$dest"
     else
       curl -fsSL "$url" -o "$dest"
     fi
   elif need_cmd wget; then
-    if [ -t 2 ]; then
+    if [ "$show_progress" = 1 ]; then
       wget --progress=bar:force -O "$dest" "$url"
     else
       wget -qO "$dest" "$url"
@@ -96,7 +97,7 @@ install_private_node() {
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/sisu-node.XXXXXX")"
   log "installing Node ${SISU_NODE_VERSION} into ${SISU_HOME}/node (user-local, not system npm)"
   log "downloading Node ${SISU_NODE_VERSION} (~30MB)"
-  download "$url" "${tmp}/${tarball}"
+  download "$url" "${tmp}/${tarball}" 1
   download "${SISU_NODE_DIST}/v${SISU_NODE_VERSION}/SHASUMS256.txt" "${tmp}/SHASUMS256.txt"
   log "verifying Node checksum"
   verify_sha256 "$tmp" "$tarball"
@@ -264,8 +265,10 @@ main() {
   ensure_user_path
   if [ -x "${SISU_HOME}/bin/sisu" ]; then
     log "command -> ${SISU_HOME}/bin/sisu"
+    log "next: ${SISU_HOME}/bin/sisu login && ${SISU_HOME}/bin/sisu"
+  else
+    log "next: sisu login && sisu"
   fi
-  log "next: sisu login && sisu"
 }
 
 if [ "${SISU_INSTALL_LIB:-}" != 1 ]; then
