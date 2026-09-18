@@ -2175,6 +2175,11 @@ fn render_welcome_done(
                 height: tip_centered.height,
             };
             let key_name = "ctrl+u";
+            let detail = if xai_grok_shell::sisu_access_point::active() {
+                format!("v{ver} available — exit and run sisu update")
+            } else {
+                format!("v{ver} available, press {key_name} to restart")
+            };
             let line = Line::from(vec![
                 Span::styled(
                     "Update: ",
@@ -2182,10 +2187,7 @@ fn render_welcome_done(
                         .fg(theme.accent_user)
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(
-                    format!("v{ver} available, press {key_name} to restart"),
-                    Style::default().fg(theme.accent_user),
-                ),
+                Span::styled(detail, Style::default().fg(theme.accent_user)),
             ]);
             Paragraph::new(line)
                 .style(Style::default().bg(theme.bg_base))

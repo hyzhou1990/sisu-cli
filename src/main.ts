@@ -19,7 +19,7 @@ import { SISU_CLIENT_VERSION } from './client'
 import { SISU_BRAND, sisuProductSurfaces } from './logo'
 import { DEFAULT_API_BASE } from './store'
 import { defaultTuiIo, runTui } from './tui'
-import { fetchLatestVersion, installNpmPackage, runUpdate } from './update'
+import { fetchLatestVersion, formatUpdateNotice, installNpmPackage, maybeLatestUpdate, runUpdate } from './update'
 
 const req = createRequire(__filename)
 
@@ -135,6 +135,14 @@ export async function runCli(
     return 0
   }
   if (!command || command === 'tui' || command === '--resume') {
+    const latest = await maybeLatestUpdate({
+      fetchLatest: deps.fetchLatest ?? (() => fetchLatestVersion(http)),
+    })
+    if (latest) {
+      process.env.SISU_UPDATE_AVAILABLE = latest
+      const notice = formatUpdateNotice(SISU_CLIENT_VERSION, latest)
+      if (notice) process.stderr.write(notice)
+    }
     return runTui(defaultTuiIo(), { pagerArgs: pagerResumeArgs(argv) })
   }
   if (command === 'update') {

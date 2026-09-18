@@ -29,6 +29,9 @@ it('ships curl and PowerShell installers that never apt/brew/choco a system Node
   expect(sh).toMatch(/verifying Node checksum/)
   expect(sh).toMatch(/extracting Node/)
   expect(sh).toMatch(/installing package/)
+  expect(sh).toMatch(/curl -fL -#/)
+  expect(sh).not.toMatch(/\[ -t 2 \]/)
+  expect(sh).toMatch(/next: \$\{SISU_HOME\}\/bin\/sisu login/)
   expect(sh).toMatch(/\$\{SISU_HOME\}\/node\/bin:\$\{PATH\}/)
   expect(sh).toMatch(/link_bin "\$\{SISU_HOME\}\/node\/bin\/npm" npm/)
   expect(sh).toMatch(/link_bin "\$\{SISU_HOME\}\/node\/bin\/npm" nmp/)
@@ -42,6 +45,9 @@ it('ships curl and PowerShell installers that never apt/brew/choco a system Node
   expect(ps1).toMatch(/verifying Node checksum/)
   expect(ps1).toMatch(/extracting Node/)
   expect(ps1).toMatch(/installing package/)
+  expect(ps1).toMatch(/curl\.exe/)
+  expect(ps1).toMatch(/-#/)
+  expect(ps1).toMatch(/next: \$sisuCmd login/)
   expect(ps1).toMatch(/npm_config_scripts_prepend_node_path/)
   expect(ps1).toMatch(/node\.exe/)
   expect(ps1.indexOf('Use-SisuNodeOnPath')).toBeLessThan(ps1.indexOf('install -g'))
@@ -123,7 +129,7 @@ it('prints package install stages when Node 20+ is already on PATH', () => {
     expect(result.stderr).toMatch(/sisu: installing @stevezhou\/sisu into /)
     expect(result.stderr).toMatch(/sisu: installing package/)
     expect(result.stderr).toMatch(/sisu: npm -> /)
-    expect(result.stderr).toMatch(/sisu: next: sisu login/)
+    expect(result.stderr).toMatch(/sisu: next: .*\/bin\/sisu login/)
     expect(result.stderr).not.toMatch(/downloading Node/)
   } finally {
     fs.rmSync(home, { recursive: true, force: true })
@@ -164,7 +170,7 @@ url=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     -o) out="$2"; shift 2 ;;
-    -fsSL|-f|-s|-S|-L|--progress-bar) shift ;;
+    -fsSL|-f|-s|-S|-L|--progress-bar|-#) shift ;;
     *) url="$1"; shift ;;
   esac
 done
