@@ -42,14 +42,17 @@ function Install-PrivateNode {
     $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("sisu-node-" + [guid]::NewGuid().ToString('n'))
     New-Item -ItemType Directory -Path $tmp | Out-Null
     Write-Sisu "installing Node $NodeVersion into $SisuHome\node (user-local, not system npm)"
+    Write-Sisu "downloading Node $NodeVersion (~30MB)"
     $zipPath = Join-Path $tmp $zipName
     Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+    Write-Sisu "verifying Node checksum"
     $sums = Invoke-WebRequest -Uri "$NodeDist/v$NodeVersion/SHASUMS256.txt" -UseBasicParsing
     $expected = ($sums.Content -split "`n" | Where-Object { $_ -match [regex]::Escape($zipName) } | Select-Object -First 1)
     if (-not $expected) { throw "no checksum for $zipName" }
     $want = ($expected -split '\s+')[0].ToLowerInvariant()
     $got = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($want -ne $got) { throw "Node checksum mismatch" }
+    Write-Sisu "extracting Node"
     Expand-Archive -Path $zipPath -DestinationPath $tmp -Force
     New-Item -ItemType Directory -Path $SisuHome -Force | Out-Null
     $dest = Join-Path $SisuHome 'node'
@@ -90,9 +93,11 @@ function Add-UserPath([string]$Dir) {
 }
 
 New-Item -ItemType Directory -Path $SisuHome -Force | Out-Null
+Write-Sisu "installing $NpmPackage into $SisuHome"
 $npm = Resolve-Npm
 Use-SisuNodeOnPath
 Write-Sisu "npm -> $npm"
+Write-Sisu "installing package (this may take a minute)"
 & $npm install -g --prefix $SisuHome $NpmPackage
 if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
 
@@ -114,6 +119,7 @@ Add-UserPath $SisuHome
 if (Test-Path $nodeDir) { Add-UserPath $nodeDir }
 $shimDir = Join-Path $env:LOCALAPPDATA 'sisu\bin'
 if (Test-Path $shimDir) { Add-UserPath $shimDir }
+Write-Sisu "added $SisuHome to user PATH"
 
 Write-Sisu "command -> $(Join-Path $SisuHome 'sisu.cmd')"
 Write-Sisu "if ``sisu`` is not found in this shell, run:"
