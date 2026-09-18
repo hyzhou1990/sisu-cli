@@ -41,4 +41,5 @@ it('tag pager-release includes a native windows-latest win32-x64 job', () => {
   expect(publish).toMatch(/xai-grok-pager-win32-x64\.br/)
   expect(publish).toMatch(/xai-grok-pager-darwin-arm64\.br/)
   expect(publish).toMatch(/xai-grok-pager-linux-x64\.br/)
+  expect(publish).toMatch(/publish-pager-packages\.cjs/)
 })

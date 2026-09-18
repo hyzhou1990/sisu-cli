@@ -36,7 +36,7 @@ Already have Node 20+ and prefer npm:
 npm install -g @stevezhou/sisu
 ```
 
-Postinstall also puts `sisu` on a PATH users actually have: `~/.local/bin` on Unix, `%LOCALAPPDATA%\sisu\bin` on Windows (wrappers that call npm's `sisu.cmd`, plus a Git Bash `sisu`). If this shell still cannot see the command, it prints `export PATH=...` (Unix) or `set PATH=` / `$env:Path` (Windows). `npm install -g` is a small JS package. It also fetches the stamped SiSu TUI pager for **this package version** into `~/.sisu/bin` when a prebuilt exists. GitHub Release tags ship `darwin-arm64`, `linux-x64`, `linux-arm64`, and `win32-x64`. `linux-x64` is built on Ubuntu 20.04 (glibc 2.31) so AutoDL and older distros can run the native TUI. `darwin-x64` is opt-in (`workflow_dispatch` with `platforms` containing `darwin-x64`) and often missing. Platforms without a binary, a missing GitHub Release asset, or a pager that cannot load, use a **limited fallback shell** — not the full SiSu TUI. `sisu update` refetches the pager.
+Postinstall also puts `sisu` on a PATH users actually have: `~/.local/bin` on Unix, `%LOCALAPPDATA%\sisu\bin` on Windows (wrappers that call npm's `sisu.cmd`, plus a Git Bash `sisu`). If this shell still cannot see the command, it prints `export PATH=...` (Unix) or `set PATH=` / `$env:Path` (Windows). `npm install -g` installs a small JS host plus one optional platform package (`@stevezhou/sisu-pager-win32-x64` and friends) from the **npm registry** (or your configured mirror). Postinstall copies that pager into `~/.sisu/bin`. 64-bit Windows always uses the `win32-x64` pager even if Node itself is 32-bit. There is no GitHub download on the user path, and no half-finished Node shell when the pager is missing — `sisu` exits and tells you to `sisu update`. GitHub Release `.br` files remain CI artifacts used only to publish the platform packages.
 
 `npx sisu` works without a global install.
 
@@ -57,7 +57,7 @@ Default API is `https://www.sisu.chat`. Override with `--api` or `SISU_API_BASE`
 ## Commands
 
 ```
-sisu                 interactive TUI (SiSu pager when stamped; otherwise Node TUI)
+sisu                 interactive TUI (stamped SiSu pager)
 sisu update          reinstall the stamped pager for this CLI version
 sisu models          list GET /api/runtime/v1/models (SiSu-Lite / Pro / Ultra)
 sisu open <dir> --project <id>
