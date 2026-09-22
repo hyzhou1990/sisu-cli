@@ -218,7 +218,7 @@ describe('sisu commands', () => {
     )).toBe('http://127.0.0.1:8000/api/auth/cli/verify?user_code=AA11-BB22')
   })
 
-  it('opens Windows URLs with explorer.exe instead of cmd.exe', () => {
+  it('opens Windows https URLs with start and an empty title', () => {
     const calls: Array<{ cmd: string; args: string[] }> = []
     const fake = ((cmd: string, args: string[]) => {
       calls.push({ cmd, args })
@@ -228,9 +228,12 @@ describe('sisu commands', () => {
       }
     }) as unknown as typeof import('child_process').spawn
     openBrowserSafely('https://www.sisu.chat/api/auth/cli/verify?user_code=AA-11', fake, 'win32')
-    expect(calls[0].cmd).toBe('explorer.exe')
-    expect(calls[0].args[0]).toMatch(/^https:\/\//)
-    expect(calls.some((item) => item.cmd === 'cmd' || item.cmd === 'cmd.exe')).toBe(false)
+    expect(calls[0].cmd).toBe('cmd.exe')
+    expect(calls[0].args[0]).toBe('/c')
+    expect(calls[0].args[1]).toBe('start')
+    expect(calls[0].args[2]).toBe('')
+    expect(calls[0].args[3]).toMatch(/^https:\/\//)
+    expect(calls.some((item) => item.cmd === 'explorer.exe')).toBe(false)
   })
 
   it('does not throw when the desktop opener is missing', () => {

@@ -164,9 +164,11 @@ function firstLiveBinDir(pathEnv = process.env.PATH || '', options = {}) {
         return false
       }
     })
-  const preferred = '/usr/local/bin'
-  if (pathContains(preferred, pathEnv, options) && isDir(preferred) && writable(preferred)) {
-    return preferred
+  const preferred = ['/opt/homebrew/bin', '/usr/local/bin']
+  for (const dir of preferred) {
+    if (pathContains(dir, pathEnv, options) && isDir(dir) && writable(dir)) {
+      return dir
+    }
   }
   const skip = new Set(['/sbin', '/usr/sbin', '/usr/local/sbin', '.', './'])
   for (const dir of pathDirs(pathEnv, options)) {

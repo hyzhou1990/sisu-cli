@@ -137,7 +137,13 @@ export function openBrowserSafely(
     const child = platform === 'darwin'
       ? spawnFn('open', [parsed.toString()], { detached: true, stdio: 'ignore' })
       : platform === 'win32'
-        ? spawnFn('explorer.exe', [parsed.toString()], { detached: true, stdio: 'ignore' })
+        // explorer.exe https://... opens a folder. `start` needs an empty
+        // window title so the URL is not taken as the title.
+        ? spawnFn('cmd.exe', ['/c', 'start', '', parsed.toString()], {
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: true,
+          })
         : spawnFn('xdg-open', [parsed.toString()], { detached: true, stdio: 'ignore' })
     child.on('error', () => undefined)
     child.unref()

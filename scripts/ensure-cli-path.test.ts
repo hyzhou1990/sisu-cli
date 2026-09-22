@@ -5,6 +5,7 @@ import path from 'path'
 const {
   ensurePrivateNodeShims,
   ensureUserShim,
+  firstLiveBinDir,
   globalSisuBin,
   installCliPath,
   pathContains,
@@ -12,6 +13,7 @@ const {
 } = require('./ensure-cli-path.js') as {
   ensurePrivateNodeShims: (options?: Record<string, unknown>) => string[]
   ensureUserShim: (target: string, options?: Record<string, unknown>) => string | null
+  firstLiveBinDir: (pathEnv?: string, options?: Record<string, unknown>) => string
   globalSisuBin: (options?: Record<string, unknown>) => string
   installCliPath: (options?: Record<string, unknown>) => {
     bin: string
@@ -86,6 +88,15 @@ it('prints a PATH export when neither npm bin nor ~/.local/bin is on PATH', () =
   expect(hint).toContain('/opt/npm/bin')
   expect(hint).toMatch(/^export PATH=/)
   expect(pathHint('/usr/bin', '/usr/bin', '/usr/bin:/bin')).toBe('')
+})
+
+it('prefers Homebrew bin when it is already on PATH', () => {
+  const dir = firstLiveBinDir('/usr/bin:/opt/homebrew/bin:/usr/local/bin', {
+    platform: 'darwin',
+    isDir: (value: string) => value === '/opt/homebrew/bin' || value === '/usr/local/bin',
+    writable: (value: string) => value === '/opt/homebrew/bin' || value === '/usr/local/bin',
+  })
+  expect(dir).toBe('/opt/homebrew/bin')
 })
 
 it('links sisu into a writable directory already on PATH', () => {
