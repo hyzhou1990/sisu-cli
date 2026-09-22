@@ -9,7 +9,7 @@ One login. Cloud quota. Local runtime. Auth lives in `~/.sisu`, shared with SiSu
 macOS / Linux / WSL:
 
 ```bash
-curl -fsSL https://www.sisu.chat/install.sh | bash
+curl -fsSL https://www.sisu.chat/install.sh | bash && export PATH="$HOME/.sisu/bin:$PATH"
 sisu login
 sisu
 ```

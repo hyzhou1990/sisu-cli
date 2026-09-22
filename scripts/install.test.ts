@@ -31,7 +31,8 @@ it('ships curl and PowerShell installers that never apt/brew/choco a system Node
   expect(sh).toMatch(/installing package/)
   expect(sh).toMatch(/curl -fL -#/)
   expect(sh).not.toMatch(/\[ -t 2 \]/)
-  expect(sh).toMatch(/next: \$\{SISU_HOME\}\/bin\/sisu login/)
+  expect(sh).toMatch(/\/opt\/homebrew\/bin/)
+  expect(sh).toMatch(/this shell: export PATH=/)
   expect(sh).toMatch(/\$\{SISU_HOME\}\/node\/bin:\$\{PATH\}/)
   expect(sh).toMatch(/link_bin "\$\{SISU_HOME\}\/node\/bin\/npm" npm/)
   expect(sh).toMatch(/link_bin "\$\{SISU_HOME\}\/node\/bin\/npm" nmp/)
@@ -129,7 +130,7 @@ it('prints package install stages when Node 20+ is already on PATH', () => {
     expect(result.stderr).toMatch(/sisu: installing @stevezhou\/sisu into /)
     expect(result.stderr).toMatch(/sisu: installing package/)
     expect(result.stderr).toMatch(/sisu: npm -> /)
-    expect(result.stderr).toMatch(/sisu: next: .*\/bin\/sisu login/)
+    expect(result.stderr).toMatch(/sisu login/)
     expect(result.stderr).not.toMatch(/downloading Node/)
   } finally {
     fs.rmSync(home, { recursive: true, force: true })

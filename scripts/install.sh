@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SiSu CLI installer. No sudo. Never installs a system Node via OS packages.
 # macOS / Linux / WSL:
-#   curl -fsSL https://www.sisu.chat/install.sh | bash
+#   curl -fsSL https://www.sisu.chat/install.sh | bash && export PATH="$HOME/.sisu/bin:$PATH"
 set -euo pipefail
 
 SISU_NPM_PACKAGE="${SISU_NPM_PACKAGE:-@stevezhou/sisu}"
@@ -133,12 +133,14 @@ link_bin() {
 # curl|bash cannot export PATH into the parent shell. Put shims in a directory
 # that is already on PATH (root AutoDL: /usr/local/bin) so `sisu` works now.
 first_live_bin_dir() {
-  local dir preferred="/usr/local/bin"
-  if [ -d "$preferred" ] && [ -w "$preferred" ]; then
-    case ":${PATH}:" in
-      *":${preferred}:"*) printf '%s\n' "$preferred"; return 0 ;;
-    esac
-  fi
+  local dir preferred
+  for preferred in /opt/homebrew/bin /usr/local/bin; do
+    if [ -d "$preferred" ] && [ -w "$preferred" ]; then
+      case ":${PATH}:" in
+        *":${preferred}:"*) printf '%s\n' "$preferred"; return 0 ;;
+      esac
+    fi
+  done
   local IFS=':'
   for dir in $PATH; do
     [ -n "$dir" ] || continue
@@ -236,16 +238,6 @@ ${export_line}
     printf '\n%s\n' "$block" >> "${HOME}/.zprofile"
     log "added PATH to ${HOME}/.zprofile"
   fi
-  if [ -n "${LIVE_PATH_CMD:-}" ]; then
-    return 0
-  fi
-  case ":${PATH}:" in
-    *":${SISU_HOME}/bin:"*|*:${HOME}/.local/bin:*) ;;
-    *)
-      log "if \`sisu\` is not found in this shell, run:"
-      log "  ${export_line} && hash -r"
-      ;;
-  esac
 }
 
 main() {
@@ -265,7 +257,11 @@ main() {
   ensure_user_path
   if [ -x "${SISU_HOME}/bin/sisu" ]; then
     log "command -> ${SISU_HOME}/bin/sisu"
-    log "next: ${SISU_HOME}/bin/sisu login && ${SISU_HOME}/bin/sisu"
+  fi
+  if [ -n "${LIVE_PATH_CMD:-}" ]; then
+    log "next: sisu login && sisu"
+  elif [ -x "${SISU_HOME}/bin/sisu" ]; then
+    log "this shell: export PATH=\"${SISU_HOME}/bin:\$PATH\" && hash -r && sisu login"
   else
     log "next: sisu login && sisu"
   fi
