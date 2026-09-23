@@ -1,9 +1,27 @@
 import { clientStamp } from './client'
 import { summarizeLiveTool } from './toolSummary'
 import { authHeaders, errorDetail, HttpClient, HttpResponse } from './http'
-import type { CloudMessage } from './pager/history'
 import { consumeSse, SseEvent, sseEventText } from './sse'
 import { readSession, requireAuth, writeSession } from './store'
+
+export interface CloudMessage {
+  id: string
+  role: string
+  content: string
+  message_type?: string | null
+  content_blocks?: Array<{
+    type?: string
+    name?: string
+    tool?: string
+    content?: unknown
+    text?: string
+    description?: string
+    result_summary?: string
+    result_preview?: string
+    success?: boolean
+    input?: unknown
+  }> | null
+}
 
 export interface TurnEvent {
   type: 'text' | 'error' | 'status' | 'bound' | 'tool'

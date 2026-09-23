@@ -1,10 +1,6 @@
 import readline from 'readline'
-import { execCommand, fetchBalance, formatQuota, listConversationsCommand, listLocalCommand, listModelsCommand, loginCommand, logoutCommand, openConversationCommand, setModelCommand, setTrainingCommand, statusCommand, webLoginCommand, type LoginInput, type WebLoginStart } from './commands'
+import { webLoginCommand, type WebLoginStart } from './commands'
 import { defaultHttp, HttpClient } from './http'
-import { sisuMobiusArt, sisuSplash, sisuSplashFrame, sisuSplashHeight, sisuWordmark } from './logo'
-import { mobiusFrameHeight } from './mobius'
-import { runPager, type PagerIo, type RunPagerOptions } from './pager/app'
-import { stdioPagerIo } from './pager/stdio'
 import { DEFAULT_API_BASE, getSisuHome, readAuth, sisuEngineHome } from './store'
 import {
   assertRuntimeAvailable,
@@ -18,9 +14,7 @@ import {
   sisuGrokBuildEnv,
   writeSisuGrokConfig,
 } from './runtime/launch'
-import { createLocalRuntimeTransport } from './runtime/transport'
 import { postTranscriptEvent, startTranscriptWatch } from './runtime/transcriptEvents'
-import type { TurnTransport } from './transport'
 import { spawn } from 'child_process'
 
 export interface LineIo {
@@ -38,24 +32,16 @@ export const SISU_LOGIN_EXIT_CODE = 10
 export const NATIVE_PAGER_FALLBACK_NOTICE =
   'sisu: native TUI cannot start on this machine. Run `sisu update` or reinstall @stevezhou/sisu. This CLI will not open the fallback shell.\n'
 
+/** Bare `sisu` is the interactive TUI; pipes and scripts must use the headless command. */
+export const TUI_REQUIRES_TTY_NOTICE =
+  'sisu: the interactive TUI needs a terminal. For a one-shot question use `sisu exec "<prompt>"` (alias `sisu -p "<prompt>"`).\n'
+
 export interface TuiDeps {
   http: HttpClient
-  status: typeof statusCommand
-  exec: typeof execCommand
-  ls: typeof listLocalCommand
-  history: typeof listConversationsCommand
-  openThread: typeof openConversationCommand
-  training: typeof setTrainingCommand
   auth: typeof readAuth
-  login?: (input: LoginInput) => Promise<string>
   webLogin?: typeof webLoginCommand
-  columns: number
-  animate?: boolean
-  sleep?: (ms: number) => Promise<void>
-  color?: boolean
-  pager?: (io: PagerIo, transport: TurnTransport, options?: RunPagerOptions) => Promise<number>
   /** Test double / override for the stamped grok-pager child spawn. */
-  spawnGrokPager?: (args?: string[]) => Promise<number>
+  spawnGrokPager?: (args?: string[]) => Promise<number | null>
   /** Extra argv for the stamped pager, e.g. `['--resume', sessionId]`. */
   pagerArgs?: string[]
   /** Test double: whether the native pager binary can exec on this OS. */
@@ -63,73 +49,9 @@ export interface TuiDeps {
   probe?: typeof assertRuntimeAvailable
 }
 
-export function shouldAnimateSplash(env: NodeJS.ProcessEnv = process.env, tty = Boolean(process.stdout.isTTY)): boolean {
-  if (env.SISU_TUI_STATIC === '1') return false
-  return tty
-}
-
-function shouldUsePager(deps: Partial<TuiDeps>, env: NodeJS.ProcessEnv = process.env): boolean {
-  if (deps.animate === false) return false
-  if (env.SISU_TUI_STATIC === '1') return false
-  return Boolean(process.stdout.isTTY)
-}
-
 /** Pager may leave the alt screen / hide the cursor when it exits 10. */
 function restoreInteractiveTerminal(io: LineIo): void {
   io.write('\x1b[?1049l\x1b[?25h\x1b[?2004l\x1b[0m')
-}
-
-export async function playMobiusIntro(
-  io: LineIo,
-  options: {
-    columns?: number
-    frames?: number
-    sleep?: (ms: number) => Promise<void>
-    color?: boolean
-  } = {},
-): Promise<void> {
-  const columns = options.columns ?? process.stdout.columns ?? 80
-  const frames = options.frames ?? 32
-  const sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)))
-  const color = options.color ?? Boolean(process.stdout.isTTY)
-  const rows = mobiusFrameHeight(columns)
-  io.write('\x1b[?25l')
-  for (let i = 0; i < frames; i += 1) {
-    const phase = (i / frames) * Math.PI * 2
-    const art = sisuMobiusArt(columns, phase, color)
-    if (i === 0) io.write(`${art}\n`)
-    else io.write(`\x1b[${rows}A${art}\n`)
-    await sleep(38)
-  }
-  io.write('\x1b[?25h')
-  io.write(`\n${sisuWordmark()}\n\n`)
-}
-
-/** Slide the half-twist around the ∞ so the single face loops. */
-export async function playTreeIntro(
-  io: LineIo,
-  options: {
-    columns?: number
-    frames?: number
-    sleep?: (ms: number) => Promise<void>
-    color?: boolean
-  } = {},
-): Promise<void> {
-  const columns = options.columns ?? process.stdout.columns ?? 80
-  const frames = Math.max(2, options.frames ?? 36)
-  const sleep = options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)))
-  const color = options.color ?? Boolean(process.stdout.isTTY)
-  const rows = sisuSplashHeight(columns)
-  io.write('\x1b[?25l')
-  for (let i = 0; i < frames; i += 1) {
-    const u = i / (frames - 1)
-    const phase = u * Math.PI * 2
-    const art = sisuSplashFrame(columns, color, phase)
-    if (i === 0) io.write(`${art}\n`)
-    else io.write(`\x1b[${rows}A${art}\n`)
-    await sleep(42)
-  }
-  io.write('\x1b[?25h')
 }
 
 export function defaultTuiIo(): LineIo {
@@ -207,68 +129,21 @@ async function readHiddenPassword(io: LineIo, prompt: string): Promise<string> {
   }
 }
 
-async function promptLogin(
-  io: LineIo,
-  login: (input: LoginInput) => Promise<string>,
-): Promise<'ok' | 'cancelled' | 'failed'> {
-  const email = (await io.question('Email: ')).trim()
-  if (!email) {
-    io.write('login cancelled\n')
-    return 'cancelled'
-  }
-  const password = await (io.questionPassword ?? io.question)('Password: ')
-  if (password === '\u0003') {
-    io.write('login cancelled\n')
-    return 'cancelled'
-  }
-  try {
-    const loggedIn = await login({ email, password })
-    io.write(`logged in as ${loggedIn}\n`)
-    return 'ok'
-  } catch (error) {
-    io.write(`${error instanceof Error ? error.message : String(error)}\n`)
-    return 'failed'
-  }
-}
-
-export function tuiHelp(): string {
-  return [
-    '/login      sign in with the browser',
-    '/logout     sign out',
-    '/model      switch model (alias /m)',
-    '/models     list available models',
-    '/copy       copy last reply to ~/.sisu/last-copy.txt',
-    '/export     write the thread to a markdown file',
-    '/status     account and quota',
-    '/ls         local workspace files',
-    '/history    saved local sessions',
-    '/open <id>  continue a saved conversation',
-    '/new        start a new conversation',
-    '/training on|off   allow or refuse training use of new turns',
-    '/help       this list',
-    '/quit       leave',
-    'otherwise   send a turn (billed to your SiSu account)',
-  ].join('\n')
-}
-
 export async function runTui(
   io: LineIo,
   deps: Partial<TuiDeps> = {},
 ): Promise<number> {
   const http = deps.http ?? defaultHttp
-  const status = deps.status ?? statusCommand
-  const exec = deps.exec ?? execCommand
-  const ls = deps.ls ?? listLocalCommand
-  const history = deps.history ?? listConversationsCommand
-  const openThread = deps.openThread ?? openConversationCommand
-  const training = deps.training ?? setTrainingCommand
   const auth = deps.auth ?? readAuth
   const webLogin = deps.webLogin ?? webLoginCommand
   const probe = deps.probe ?? assertRuntimeAvailable
-  const columns = deps.columns ?? process.stdout.columns ?? 80
-  const animate = deps.animate ?? shouldAnimateSplash()
 
   try {
+  if (!process.stdout.isTTY && !deps.spawnGrokPager) {
+    io.write(TUI_REQUIRES_TTY_NOTICE)
+    return 1
+  }
+
   let openedBrowserLogin = false
   const startWebLogin = async (notify: (line: string) => void): Promise<string> => {
     openedBrowserLogin = true
@@ -297,31 +172,15 @@ export async function runTui(
     }
   }
 
-  let runtimeOk = true
   try {
     await probe(http, account.api_base)
   } catch (error) {
     if (!(error instanceof RuntimeUnavailable)) throw error
-    runtimeOk = false
     io.write(
-      `SiSu runtime is not available at ${account.api_base}/api/runtime. ` +
-        `This CLI will not fall back to xAI. Using a limited fallback shell — not the full SiSu TUI.\n`,
+      `sisu: SiSu runtime is not available at ${account.api_base}/api/runtime. ` +
+        'This CLI will not fall back to xAI or open the fallback shell. Try again later.\n',
     )
-  }
-
-  // Health failure never spawns the pager (injected or grok binary).
-  const usePager =
-    runtimeOk && Boolean(deps.pager || deps.spawnGrokPager || shouldUsePager(deps))
-  if (!usePager) {
-    if (animate) {
-      await playTreeIntro(io, {
-        columns,
-        color: deps.color ?? true,
-        sleep: deps.sleep,
-      })
-    } else {
-      io.write(`${sisuSplash(columns, true)}\n`)
-    }
+    return 1
   }
 
   const grokBin = findGrokBuildBinary()
@@ -333,210 +192,91 @@ export async function runTui(
         pagerStampAllowsSpawn(grokBin) &&
         runnable(grokBin)),
   )
-  if (
-    grokBin &&
-    process.stdout.isTTY &&
-    !deps.spawnGrokPager &&
-    pagerStampAllowsSpawn(grokBin) &&
-    !runnable(grokBin)
-  ) {
-    io.write(NATIVE_PAGER_FALLBACK_NOTICE)
-    if (!deps.pager) return 1
-  }
-
-  if (
-    runtimeOk &&
-    !deps.pager &&
-    !deps.spawnGrokPager &&
-    process.stdout.isTTY &&
-    process.env.SISU_TUI_STATIC !== '1' &&
-    !nativePagerOk
-  ) {
+  if (!nativePagerOk) {
     io.write(NATIVE_PAGER_FALLBACK_NOTICE)
     return 1
   }
 
-  if (usePager && (deps.spawnGrokPager || !deps.pager)) {
-    const pagerArgs = deps.pagerArgs ?? []
-    const spawnOnce =
-      (deps.spawnGrokPager
-        ? () => deps.spawnGrokPager!(pagerArgs)
-        : () => {
-        const grokBin = findGrokBuildBinary()
-        if (!grokBin || !process.stdout.isTTY) {
-          return Promise.resolve(null as number | null)
-        }
-        if (!pagerStampAllowsSpawn(grokBin)) {
-          io.write(
-            'sisu: refusing to spawn a pager older than this CLI. Reinstall the pager or run `sisu` after postinstall.\n',
-          )
-          return Promise.resolve(null as number | null)
-        }
-        if (!runnable(grokBin)) {
-          return Promise.resolve(null as number | null)
-        }
-        const home = getSisuHome()
-        const engine = sisuEngineHome()
-        migrateGrokScratchToEngine(home)
-        purgeChangelogCache(home, engine)
-        writeSisuGrokConfig()
-        io.close?.()
-        const env = sisuGrokBuildEnv()
-        const stopWatch = startTranscriptWatch({
-          engineHome: engine,
-          conversationId: String(env.SISU_CONVERSATION_ID || ''),
-          post: async (event) => {
-            const current = auth()
-            if (!current?.token) return false
-            return postTranscriptEvent(
-              http,
-              current.api_base || DEFAULT_API_BASE,
-              current.token,
-              event,
-            )
-          },
-        })
-        const child = spawn(grokBin, pagerArgs, {
-          stdio: 'inherit',
-          env,
-          cwd: pagerSpawnCwd(),
-        })
-        return new Promise<number>((resolve) => {
-          const finish = (code: number) => {
-            void stopWatch().finally(() => resolve(code))
-          }
-          child.on('exit', (code) => finish(code ?? 1))
-          child.on('error', () => finish(1))
-        })
-      })
-
-    if (deps.spawnGrokPager || nativePagerOk) {
-      // Login handoff: pager exits 10 → host web login at most once → respawn
-      // grok-pager. Never fall through to the Node TUI while the grok binary ran.
-      let retriedWithSession = false
-      while (true) {
-        const code = await spawnOnce()
-        if (code === null) break
-        if (code !== SISU_LOGIN_EXIT_CODE) return code
-        restoreInteractiveTerminal(io)
-        if (!auth() && !openedBrowserLogin) {
-          try {
-            const email = await startWebLogin((line) => io.write(`${line}\n`))
-            io.write(`logged in as ${email}\n`)
-          } catch (error) {
-            io.write(`${error instanceof Error ? error.message : String(error)}\n`)
-            io.write('login failed — run `sisu login`\n')
-            return 1
-          }
-          continue
-        }
-        if (retriedWithSession) {
-          io.write('sisu: grok pager still requesting login after a saved session.\n')
-          return SISU_LOGIN_EXIT_CODE
-        }
-        retriedWithSession = true
+  const pagerArgs = deps.pagerArgs ?? []
+  const spawnOnce: () => Promise<number | null> =
+    deps.spawnGrokPager
+      ? () => deps.spawnGrokPager!(pagerArgs)
+      : () => {
+      const grokBin = findGrokBuildBinary()
+      if (!grokBin || !process.stdout.isTTY) {
+        return Promise.resolve(null)
       }
-    }
-  }
-
-  if (usePager) {
-    io.close?.()
-    const transport = createLocalRuntimeTransport(http, { client: 'tui' })
-    return await (deps.pager ?? runPager)(stdioPagerIo(), transport, {
-      columns,
-      email: account?.email,
-      login: startWebLogin,
-      logout: logoutCommand,
-      models: () => listModelsCommand(http),
-      setModel: (name: string) => setModelCommand(name, http),
-      intro: animate,
-      sleep: deps.sleep,
-      quota: async () => formatQuota(await fetchBalance(http)),
-      status: () => status(http),
-      ls: () => {
-        try {
-          return ls()
-        } catch (error) {
-          return error instanceof Error ? error.message : String(error)
+      if (!pagerStampAllowsSpawn(grokBin)) {
+        io.write(
+          'sisu: refusing to spawn a pager older than this CLI. Reinstall the pager or run `sisu` after postinstall.\n',
+        )
+        return Promise.resolve(null)
+      }
+      if (!runnable(grokBin)) {
+        return Promise.resolve(null)
+      }
+      const home = getSisuHome()
+      const engine = sisuEngineHome()
+      migrateGrokScratchToEngine(home)
+      purgeChangelogCache(home, engine)
+      writeSisuGrokConfig()
+      io.close?.()
+      const env = sisuGrokBuildEnv()
+      const stopWatch = startTranscriptWatch({
+        engineHome: engine,
+        conversationId: String(env.SISU_CONVERSATION_ID || ''),
+        post: async (event) => {
+          const current = auth()
+          if (!current?.token) return false
+          return postTranscriptEvent(
+            http,
+            current.api_base || DEFAULT_API_BASE,
+            current.token,
+            event,
+          )
+        },
+      })
+      const child = spawn(grokBin, pagerArgs, {
+        stdio: 'inherit',
+        env,
+        cwd: pagerSpawnCwd(),
+      })
+      return new Promise<number>((resolve) => {
+        const finish = (code: number) => {
+          void stopWatch().finally(() => resolve(code))
         }
-      },
-      training: (on) => training(on, http),
-    })
-  }
+        child.on('exit', (code) => finish(code ?? 1))
+        child.on('error', () => finish(1))
+      })
+    }
 
-  io.write(`${await status(http)}\n`)
-  io.write(`${tuiHelp()}\n\n`)
-
-  let newConversation = false
+  // Login handoff: pager exits 10 → host web login at most once → respawn
+  // grok-pager. A pager that cannot spawn at all is a failed launch.
+  let retriedWithSession = false
   while (true) {
-    const raw = (await io.question('› ')).trim()
-    if (!raw) continue
-    if (raw === '/login') {
+    const code = await spawnOnce()
+    if (code === null) {
+      io.write(NATIVE_PAGER_FALLBACK_NOTICE)
+      return 1
+    }
+    if (code !== SISU_LOGIN_EXIT_CODE) return code
+    restoreInteractiveTerminal(io)
+    if (!auth() && !openedBrowserLogin) {
       try {
         const email = await startWebLogin((line) => io.write(`${line}\n`))
         io.write(`logged in as ${email}\n`)
       } catch (error) {
         io.write(`${error instanceof Error ? error.message : String(error)}\n`)
+        io.write('login failed — run `sisu login`\n')
+        return 1
       }
       continue
     }
-    if (raw === '/quit' || raw === '/exit') {
-      io.write('bye\n')
-      return 0
+    if (retriedWithSession) {
+      io.write('sisu: grok pager still requesting login after a saved session.\n')
+      return SISU_LOGIN_EXIT_CODE
     }
-    if (raw === '/help') {
-      io.write(`${tuiHelp()}\n`)
-      continue
-    }
-    if (raw === '/status') {
-      io.write(`${await status(http)}\n`)
-      continue
-    }
-    if (raw === '/ls') {
-      try {
-        io.write(`${ls()}\n`)
-      } catch (error) {
-        io.write(`${error instanceof Error ? error.message : String(error)}\n`)
-      }
-      continue
-    }
-    if (raw === '/new') {
-      newConversation = true
-      io.write('next turn starts a new conversation\n')
-      continue
-    }
-    if (raw === '/history') {
-      try {
-        io.write(`${await history(http)}\n`)
-      } catch (error) {
-        io.write(`${error instanceof Error ? error.message : String(error)}\n`)
-      }
-      continue
-    }
-    if (raw.startsWith('/open ')) {
-      try {
-        io.write(`${await openThread(raw.slice(6).trim(), http)}\n`)
-        newConversation = false
-      } catch (error) {
-        io.write(`${error instanceof Error ? error.message : String(error)}\n`)
-      }
-      continue
-    }
-    if (raw === '/training on' || raw === '/training off') {
-      try {
-        io.write(`${await training(raw.endsWith('on'), http)}\n`)
-      } catch (error) {
-        io.write(`${error instanceof Error ? error.message : String(error)}\n`)
-      }
-      continue
-    }
-    try {
-      const result = await exec(raw, { newConversation, client: 'tui' }, http)
-      newConversation = false
-      io.write(`${result.text || '(empty reply)'}\n`)
-    } catch (error) {
-      io.write(`${error instanceof Error ? error.message : String(error)}\n`)
-    }
+    retriedWithSession = true
   }
   } finally {
     io.close?.()
