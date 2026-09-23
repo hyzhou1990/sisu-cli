@@ -33,16 +33,17 @@
     "access": "public"
   },
   "optionalDependencies": {
-    "@stevezhou/sisu-pager-darwin-arm64": "0.3.35",
-    "@stevezhou/sisu-pager-linux-arm64": "0.3.35",
-    "@stevezhou/sisu-pager-linux-x64": "0.3.35",
-    "@stevezhou/sisu-pager-win32-x64": "0.3.35"
+    "@stevezhou/sisu-pager-darwin-arm64": "0.3.36",
+    "@stevezhou/sisu-pager-linux-arm64": "0.3.36",
+    "@stevezhou/sisu-pager-linux-x64": "0.3.36",
+    "@stevezhou/sisu-pager-win32-x64": "0.3.36"
   },
   "scripts": {
     "build": "tsc",
     "prepack": "tsc",
     "prepublishOnly": "npm test",
     "postinstall": "node scripts/postinstall.js",
+    "version": "node scripts/sync-pager-versions.cjs && git add package.json",
     "test": "jest --runInBand",
     "typecheck": "tsc --noEmit"
   },

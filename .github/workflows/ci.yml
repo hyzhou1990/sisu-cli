@@ -29,7 +29,11 @@ jobs:
       - name: Install, test, typecheck
         run: |
           set -euo pipefail
-          npm ci
+          # `npm install`, not `npm ci`: right after a version bump the pinned
+          # pager platform packages are not on the registry yet, and npm ci
+          # fails the lock sync check (optional deps still resolve to the
+          # previous release). npm install treats them as skippable optionals.
+          npm install --no-audit --no-fund
           npm test
           npx tsc --noEmit
 

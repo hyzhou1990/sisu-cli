@@ -53,7 +53,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          npm ci
+          # See ci.yml: npm install, not npm ci — the to-be-published pager
+          # platform packages cannot satisfy npm ci's lock check yet.
+          npm install --no-audit --no-fund
           npm test
           npm pack
           if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
