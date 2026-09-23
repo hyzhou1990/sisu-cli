@@ -132,6 +132,27 @@ it('sisuGrokBuildEnv keeps a valid UUID last_conversation_id', () => {
   }
 })
 
+it('sisuGrokBuildEnv opts into the harness updater only with a new-enough pager', () => {
+  const previousHome = process.env.SISU_HOME
+  const home = makeHome()
+  const pagerDir = path.join(home, 'bin')
+  const stamp = (version: string) => {
+    fs.mkdirSync(pagerDir, { recursive: true })
+    fs.writeFileSync(path.join(pagerDir, 'xai-grok-pager.version'), `${version}\n`)
+  }
+  try {
+    expect(sisuGrokBuildEnv().SISU_AUTO_UPDATE).toBeUndefined()
+    stamp('0.3.37')
+    expect(sisuGrokBuildEnv().SISU_AUTO_UPDATE).toBeUndefined()
+    stamp('0.3.38')
+    expect(sisuGrokBuildEnv().SISU_AUTO_UPDATE).toBe('1')
+  } finally {
+    if (previousHome === undefined) delete process.env.SISU_HOME
+    else process.env.SISU_HOME = previousHome
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
 it('sisuGrokBuildEnv replaces a non-UUID last_conversation_id', () => {
   const previousHome = process.env.SISU_HOME
   const previousConv = process.env.SISU_CONVERSATION_ID

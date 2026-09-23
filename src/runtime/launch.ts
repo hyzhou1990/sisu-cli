@@ -177,6 +177,9 @@ export function pagerStampMeetsRelease(
 /** First pager that speaks the access-point contract. Host patches may ship ahead of a rebuild. */
 export const MIN_PAGER_STAMP = '0.3.11'
 
+/** First pager whose harness updater speaks the sisu version manifest. */
+export const AUTO_UPDATE_MIN_PAGER_STAMP = '0.3.38'
+
 /** B-full when the host env flag is on or the installed pager is at least MIN_PAGER_STAMP. */
 export function accessPointBfullEnabled(): boolean {
   return process.env.SISU_ACCESS_POINT_BFULL === '1' || pagerStampMeetsRelease(installedPagerStamp(), MIN_PAGER_STAMP)
@@ -335,6 +338,11 @@ export function sisuGrokBuildEnv(): NodeJS.ProcessEnv {
   purgeXaiEngineAuth(engine)
   setEnv(env, 'PATH', prependToolPath(readEnv(env, 'PATH'), getSisuHome()))
   setEnv(env, 'SISU_ACCESS_POINT', '1')
+  // Opt into the harness's NonBlocking background updater (xai-grok-update,
+  // sisu manifest redirect) once the installed pager is new enough to speak it.
+  if (pagerStampMeetsRelease(installedPagerStamp(), AUTO_UPDATE_MIN_PAGER_STAMP)) {
+    setEnv(env, 'SISU_AUTO_UPDATE', '1')
+  }
   setEnv(env, 'GROK_HOME', engine)
   setEnv(env, 'GROK_AUTH_PATH', path.join(engine, 'auth.json'))
   setEnv(env, 'SISU_AUTH_PATH', sisuAuthPath())
