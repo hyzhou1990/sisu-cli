@@ -94,9 +94,7 @@ pub(crate) fn sisu_version_base_url() -> Option<String> {
     match std::env::var(SISU_CLI_VERSION_BASE_URL_ENV) {
         Ok(base) => {
             let base = base.trim().trim_end_matches('/');
-            if !base.is_empty()
-                && xai_grok_shell::sisu_access_point::is_sisu_runtime_url(base)
-            {
+            if !base.is_empty() && xai_grok_shell::sisu_access_point::is_sisu_runtime_url(base) {
                 Some(base.to_string())
             } else {
                 tracing::warn!(
@@ -135,9 +133,10 @@ pub(crate) async fn fetch_sisu_version_manifest() -> Result<SisuCliVersionManife
     {
         req = req.header("Authorization", auth);
     }
-    let resp = req.send().await.map_err(|e| {
-        anyhow::anyhow!("sisu version manifest fetch failed for {}: {:#}", url, e)
-    })?;
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("sisu version manifest fetch failed for {}: {:#}", url, e))?;
     if !resp.status().is_success() {
         anyhow::bail!(
             "sisu version manifest fetch failed: HTTP {} for {}",
@@ -145,12 +144,16 @@ pub(crate) async fn fetch_sisu_version_manifest() -> Result<SisuCliVersionManife
             url
         );
     }
-    let manifest: SisuCliVersionManifest = resp.json().await.map_err(|e| {
-        anyhow::anyhow!("sisu version manifest parse failed for {}: {:#}", url, e)
-    })?;
+    let manifest: SisuCliVersionManifest = resp
+        .json()
+        .await
+        .map_err(|e| anyhow::anyhow!("sisu version manifest parse failed for {}: {:#}", url, e))?;
     let latest = manifest.latest.trim().to_string();
     if semver::Version::parse(&latest).is_err() {
-        anyhow::bail!("invalid semver in sisu version manifest latest: '{}'", latest);
+        anyhow::bail!(
+            "invalid semver in sisu version manifest latest: '{}'",
+            latest
+        );
     }
     let stable = manifest
         .stable

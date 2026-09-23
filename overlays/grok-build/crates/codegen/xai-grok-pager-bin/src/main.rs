@@ -2174,7 +2174,7 @@ async fn async_main(args: PagerArgs) -> Result<()> {
                 trigger,
                 auto,
             } => {
-                if sisu_access_point::active() {
+                if sisu_access_point::active() && !auto_update::sisu_auto_update_enabled() {
                     eprintln!("run sisu update");
                     std::process::exit(2);
                 }
@@ -2332,7 +2332,13 @@ async fn async_main(args: PagerArgs) -> Result<()> {
         Ok(true) => {
             let adopted = bg_update_wait.lock().await.take();
             if finish_update_on_exit(adopted, &update_config).await {
-                eprintln!("Update installed. Run `grok` to start.");
+                if sisu_access_point::active() {
+                    eprintln!("Update installed. Restart SiSu to pick it up.");
+                } else {
+                    eprintln!("Update installed. Run `grok` to start.");
+                }
+            } else if sisu_access_point::active() {
+                eprintln!("Update did not complete. Run `sisu update` to retry.");
             } else {
                 eprintln!("Update did not complete. Run `grok update` to retry.");
             }
@@ -2419,7 +2425,9 @@ fn build_update_config() -> UpdateConfig {
 /// Central gate for auto-update checks; add new suppression rules here,
 /// not at call sites.
 fn should_check_for_updates(no_auto_update_flag: bool) -> bool {
-    if sisu_access_point::active() {
+    // Access-point mode defers to the node host's own updater unless the host
+    // explicitly opts into the harness's updater (SISU_AUTO_UPDATE=1).
+    if sisu_access_point::active() && !auto_update::sisu_auto_update_enabled() {
         return false;
     }
     if cfg!(debug_assertions) {

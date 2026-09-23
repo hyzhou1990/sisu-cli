@@ -46,13 +46,25 @@ const SISU_NPM_PACKAGE: &str = "@stevezhou/sisu";
 /// the raw-binary CDN path, which must never run against a sisu build.
 const SISU_INSTALLER: &str = "npm";
 
-fn sisu_auto_update_enabled() -> bool {
+/// True when the node host opted this build into the harness's own updater
+/// (`SISU_AUTO_UPDATE=1`/`true`). Public so pager-bin's startup gates and
+/// command arms apply the same opt-in as the update flows here.
+pub fn sisu_auto_update_enabled() -> bool {
     std::env::var(SISU_AUTO_UPDATE_ENV)
         .map(|v| {
             let v = v.trim();
             v == "1" || v.eq_ignore_ascii_case("true")
         })
         .unwrap_or(false)
+}
+
+/// Product name in user-facing update messages.
+fn product_display_name() -> &'static str {
+    if xai_grok_shell::sisu_access_point::active() {
+        "SiSu CLI"
+    } else {
+        "Grok Build"
+    }
 }
 
 /// npm package the npm installer targets. Upstream builds always install
@@ -268,7 +280,13 @@ pub fn print_update_status(status: &UpdateStatus, json: bool) -> anyhow::Result<
 }
 
 pub async fn check_update_status(update_config: &UpdateConfig) -> UpdateStatus {
-    let installer = get_installer().await.map(|value| value.to_string());
+    // sisu distribution is npm-only; report the installer the sisu flow
+    // actually uses instead of the config default ("internal" CDN path).
+    let installer = if xai_grok_shell::sisu_access_point::active() {
+        Some(SISU_INSTALLER.to_string())
+    } else {
+        get_installer().await.map(|value| value.to_string())
+    };
     let current_version = get_installed_grok_version();
     let current_config = config::load_config().await;
     let auto_update = current_config.cli.auto_update;
@@ -643,12 +661,23 @@ impl BackgroundUpdateCheck {
 /// ready when the user quits and relaunches. When another process (an earlier
 /// TUI, the leader's hourly checker) already put the target version on disk,
 /// no download is started — only the restart hint is surfaced.
+///
+/// In SiSu access-point mode this is inert unless the node host opted in via
+/// `SISU_AUTO_UPDATE` ([`sisu_auto_update_enabled`]); the installer is then
+/// pinned to npm (`SISU_INSTALLER`) and the spawned `update` child runs the
+/// SiSu flow ([`sisu_run_update`]).
 pub async fn check_update_background(update_config: &UpdateConfig) -> BackgroundUpdateCheck {
-    if xai_grok_shell::sisu_access_point::active() {
+    let sisu_mode = xai_grok_shell::sisu_access_point::active();
+    if sisu_mode && !sisu_auto_update_enabled() {
         return BackgroundUpdateCheck::none();
     }
-    let Some(installer) = get_installer().await else {
-        return BackgroundUpdateCheck::none();
+    let installer = if sisu_mode {
+        SISU_INSTALLER
+    } else {
+        let Some(installer) = get_installer().await else {
+            return BackgroundUpdateCheck::none();
+        };
+        installer
     };
 
     heal_managed_install(installer).await;
@@ -737,12 +766,19 @@ pub async fn run_update_if_available(
     trigger: CliUpdateTrigger,
     update_config: &UpdateConfig,
 ) -> Result<bool> {
-    if xai_grok_shell::sisu_access_point::active() {
+    let sisu_mode = xai_grok_shell::sisu_access_point::active();
+    if sisu_mode && !sisu_auto_update_enabled() {
         return Ok(false);
     }
-    let Some(inst) = get_installer().await else {
-        // Skip update check if no known installer.
-        return Ok(false);
+    let inst = if sisu_mode {
+        // sisu distribution is npm-only; never touch the upstream CDN path.
+        SISU_INSTALLER
+    } else {
+        let Some(inst) = get_installer().await else {
+            // Skip update check if no known installer.
+            return Ok(false);
+        };
+        inst
     };
 
     heal_managed_install(inst).await;
@@ -797,8 +833,11 @@ pub async fn run_update_if_available(
     let channel_label = format!(" [{}]", update_config.channel);
     if auto_update {
         eprintln!(
-            "A new version of Grok Build is available: {} -> {}{}",
-            current_version, latest_version, channel_label
+            "A new version of {} is available: {} -> {}{}",
+            product_display_name(),
+            current_version,
+            latest_version,
+            channel_label
         );
         if interactive {
             if let Err(e) = run_update_subcommand(run_mode, trigger).await {
@@ -825,8 +864,11 @@ pub async fn run_update_if_available(
             return Ok(false);
         }
         eprintln!(
-            "A new version of Grok Build is available: {} -> {}{}",
-            current_version, latest_version, channel_label
+            "A new version of {} is available: {} -> {}{}",
+            product_display_name(),
+            current_version,
+            latest_version,
+            channel_label
         );
         if interactive {
             eprintln!("{}", PROMPT_UPDATE_NOW);
@@ -2885,20 +2927,24 @@ pub async fn run_update(
 
 /// SiSu access-point update flow (`SISU_AUTO_UPDATE` opt-in).
 ///
-/// The harness's own NonBlocking updater, redirected at the SiSu
-/// distribution: resolve the latest version from the SiSu runtime version
-/// manifest (`GET {base}/cli/version`, see `version.rs`), then
+/// The harness's own updater, redirected at the SiSu distribution: resolve
+/// the latest version from the SiSu runtime version manifest
+/// (`GET {base}/cli/version`, see `version.rs`), then
 /// `npm i -g @stevezhou/sisu@<version>`. The node host and the vendored
 /// pager ship inside that npm package, so the npm install IS the pager
-/// update; on macOS `warn_if_other_grok_processes_running` already covers
-/// the in-place-replace hazard for every process running the vendored
-/// binary.
+/// update; on macOS `warn_if_other_grok_processes_running` covers the
+/// in-place-replace hazard for any process still running the vendored
+/// binary directly.
 ///
-/// Reachable today via `pager update --trigger=…` (including the detached
-/// NonBlocking child spawn) with `SISU_ACCESS_POINT=1` + `SISU_AUTO_UPDATE=1`.
-/// The startup-side gates (`should_check_for_updates` in pager-bin) still
-/// suppress automatic checks in access-point mode; wiring those is a
-/// follow-up together with the node host (see the overlay PR description).
+/// Reached via `pager update` (explicit, or the detached NonBlocking child
+/// spawn from `run_update_subcommand`) with `SISU_ACCESS_POINT=1` (always
+/// set for sisu launches) + `SISU_AUTO_UPDATE=1` (host opt-in). With the
+/// opt-in set, pager-bin's `should_check_for_updates` also lets the
+/// harness's own background triggers run — TUI startup
+/// `check_update_background`, headless/stdio
+/// `run_update_if_available(NonBlocking)`, leader hourly
+/// `ensure_latest_on_disk`. Without the opt-in, access-point mode keeps the
+/// legacy "run sisu update" hand-off to the node host's own updater.
 async fn sisu_run_update(
     pinned_version: Option<&str>,
     update_config: &UpdateConfig,
