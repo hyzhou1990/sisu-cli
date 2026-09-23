@@ -102,12 +102,22 @@ function sisuHome(options = {}) {
 
 function ensureLink(target, dest) {
   fs.mkdirSync(path.dirname(dest), { recursive: true, mode: 0o755 })
+  const resolvedTarget = path.resolve(target)
+  // Never link a path onto itself: a global install whose npm bin dir is the
+  // live PATH dir (Homebrew's /opt/homebrew/bin) would otherwise replace
+  // npm's real bin link with `sisu -> sisu` and break the command outright.
+  if (resolvedTarget === dest) return dest
+  try {
+    if (fs.realpathSync(dest) === fs.realpathSync(resolvedTarget)) return dest
+  } catch {
+    // dest missing or a dangling link — (re)write it below
+  }
   try {
     if (fs.lstatSync(dest)) fs.unlinkSync(dest)
   } catch {
     // missing
   }
-  fs.symlinkSync(path.resolve(target), dest)
+  fs.symlinkSync(resolvedTarget, dest)
   try {
     fs.chmodSync(dest, 0o755)
   } catch {
@@ -202,19 +212,7 @@ function ensureUserShim(target, options = {}) {
   if (isWin(options)) {
     return writeWindowsWrappers(target, dir, options)
   }
-  const dest = path.join(dir, 'sisu')
-  try {
-    if (fs.lstatSync(dest)) fs.unlinkSync(dest)
-  } catch {
-    // missing
-  }
-  fs.symlinkSync(path.resolve(target), dest)
-  try {
-    fs.chmodSync(dest, 0o755)
-  } catch {
-    // symlink mode follows the target on most POSIX
-  }
-  return dest
+  return ensureLink(target, path.join(dir, 'sisu'))
 }
 
 /** `sisu.cmd` and the Git Bash `sisu` only. PowerShell resolves `sisu` to
