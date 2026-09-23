@@ -104,12 +104,25 @@ if [ -n "$BIN_EXT" ]; then
 fi
 
 cd "$ROOT/vendor/grok-build"
+# Distribution size: strip symbols and thin-LTO the release build. The
+# workspace's release profile keeps symbols and codegen-units=16 by default;
+# its release-dist profile is tuned for a dSYM-splitting CI flow we don't run.
+# Env overrides keep the vendor pin untouched. Strip drops the ~30MB symbol
+# table; on macOS re-ad-hoc-sign afterwards or Gatekeeper refuses the binary.
+export CARGO_PROFILE_RELEASE_STRIP=true
+export CARGO_PROFILE_RELEASE_LTO=thin
+export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+export CARGO_PROFILE_RELEASE_INCREMENTAL=false
 if [ -n "${CARGO_TARGET:-}" ]; then
   cargo build -p xai-grok-pager-bin --release --target "$CARGO_TARGET"
   BIN_SRC="target/${CARGO_TARGET}/release/xai-grok-pager${BIN_EXT}"
 else
   cargo build -p xai-grok-pager-bin --release
   BIN_SRC="target/release/xai-grok-pager${BIN_EXT}"
+fi
+
+if [ "$(uname -s)" = "Darwin" ] && [ -f "$BIN_SRC" ]; then
+  codesign --force --sign - "$BIN_SRC" 2>/dev/null || true
 fi
 
 if [ ! -f "$BIN_SRC" ]; then
