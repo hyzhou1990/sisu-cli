@@ -177,6 +177,12 @@ live_link() {
   if [ "$force" != 1 ] && ! ours_or_missing "$dest"; then
     return 1
   fi
+  # Never rewrite a link that already resolves to the same file: if src
+  # resolves through dest, relinking would create a self-referential loop.
+  if [ -e "$dest" ] && [ "$src" -ef "$dest" ]; then
+    printf '%s\n' "$dest"
+    return 0
+  fi
   ln -sfn "$src" "$dest"
   printf '%s\n' "$dest"
 }

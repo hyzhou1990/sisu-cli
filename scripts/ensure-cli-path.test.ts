@@ -90,6 +90,62 @@ it('prints a PATH export when neither npm bin nor ~/.local/bin is on PATH', () =
   expect(pathHint('/usr/bin', '/usr/bin', '/usr/bin:/bin')).toBe('')
 })
 
+it('keeps the npm bin link when the live PATH dir is the npm bin dir', () => {
+  // Homebrew global-install layout: npm links <prefix>/bin/sisu to the package
+  // main.js, then the postinstall runs installCliPath with the same prefix.
+  // The live-path step must not replace that link with `sisu -> sisu`.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-brew-home-'))
+  const prefix = path.join(home, 'homebrew')
+  const pkgMain = path.join(prefix, 'lib', 'node_modules', '@stevezhou', 'sisu', 'dist', 'main.js')
+  fs.mkdirSync(path.dirname(pkgMain), { recursive: true })
+  fs.writeFileSync(pkgMain, '#!/usr/bin/env node\n')
+  const bin = path.join(prefix, 'bin', 'sisu')
+  fs.mkdirSync(path.dirname(bin), { recursive: true })
+  fs.symlinkSync(path.relative(path.dirname(bin), pkgMain), bin)
+  try {
+    const result = installCliPath({
+      prefix,
+      home,
+      platform: 'darwin',
+      pathEnv: `${prefix}/bin:/usr/bin:/bin`,
+      write: () => undefined,
+    })
+    expect(result.live).toBe(bin)
+    expect(fs.realpathSync(bin)).toBe(fs.realpathSync(pkgMain))
+    expect(path.resolve(path.dirname(bin), fs.readlinkSync(bin))).not.toBe(bin)
+    const shim = path.join(home, '.local', 'bin', 'sisu')
+    expect(fs.realpathSync(shim)).toBe(fs.realpathSync(pkgMain))
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('leaves a correct live link in place on a repeated install', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-reinstall-home-'))
+  const live = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-reinstall-bin-'))
+  const prefix = path.join(home, 'npm')
+  const bin = path.join(prefix, 'bin', 'sisu')
+  fs.mkdirSync(path.dirname(bin), { recursive: true })
+  fs.writeFileSync(bin, '#!/usr/bin/env node\n')
+  const options = {
+    prefix,
+    home,
+    platform: 'linux',
+    pathEnv: `${live}:/usr/bin:/bin`,
+    write: () => undefined,
+  }
+  try {
+    installCliPath(options)
+    const first = fs.readlinkSync(path.join(live, 'sisu'))
+    installCliPath(options)
+    expect(fs.readlinkSync(path.join(live, 'sisu'))).toBe(first)
+    expect(fs.realpathSync(path.join(live, 'sisu'))).toBe(fs.realpathSync(bin))
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+    fs.rmSync(live, { recursive: true, force: true })
+  }
+})
+
 it('prefers Homebrew bin when it is already on PATH', () => {
   const dir = firstLiveBinDir('/usr/bin:/opt/homebrew/bin:/usr/local/bin', {
     platform: 'darwin',

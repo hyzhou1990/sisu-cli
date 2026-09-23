@@ -98,6 +98,49 @@ it('uses an existing Node 20+ and does not download a runtime', () => {
   }
 })
 
+it('never relinks a live sisu that already resolves to the same file', () => {
+  // A previous odd state left ~/.sisu/bin/sisu pointing at the live PATH link
+  // while the live link points at the real binary. Relinking the live entry
+  // to ~/.sisu/bin/sisu would close a self-referential loop and kill `sisu`.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-install-loop-'))
+  const bindir = path.join(home, 'bin')
+  const live = path.join(home, 'live')
+  const sisuHome = path.join(home, '.sisu')
+  const npmLog = path.join(home, 'npm.log')
+  const realSisu = path.join(home, 'real-sisu')
+  fs.mkdirSync(bindir, { recursive: true })
+  fs.mkdirSync(live, { recursive: true })
+  writeExec(realSisu, '#!/bin/sh\necho sisu\n')
+  fs.symlinkSync(realSisu, path.join(live, 'sisu'))
+  writeExec(
+    path.join(bindir, 'node'),
+    '#!/bin/sh\n[ "$1" = "-p" ] && echo 22 && exit 0\necho v22.23.2\n',
+  )
+  writeExec(
+    path.join(bindir, 'npm'),
+    `#!/bin/sh\nprintf '%s\\n' "$@" > "${npmLog}"\nmkdir -p "${sisuHome}/bin"\nln -sfn "${live}/sisu" "${sisuHome}/bin/sisu"\n`,
+  )
+  writeExec(
+    path.join(bindir, 'curl'),
+    '#!/bin/sh\necho curl-should-not-run >&2\nexit 1\n',
+  )
+  try {
+    execFileSync('bash', [installSh], {
+      encoding: 'utf8',
+      env: {
+        HOME: home,
+        PATH: `${live}${path.delimiter}${bindir}${path.delimiter}/usr/bin:/bin`,
+        SISU_HOME: sisuHome,
+        SISU_NPM_PACKAGE: '@stevezhou/sisu',
+      },
+    })
+    expect(fs.readlinkSync(path.join(live, 'sisu'))).toBe(realSisu)
+    expect(fs.realpathSync(path.join(live, 'sisu'))).toBe(fs.realpathSync(realSisu))
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
 it('prints package install stages when Node 20+ is already on PATH', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sisu-install-progress-'))
   const bindir = path.join(home, 'bin')
