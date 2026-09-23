@@ -1744,10 +1744,19 @@ fn render_welcome_done(
     });
     let has_update_tip = p.pending_update_version.is_some();
     let has_resume_tip = !has_update_tip && p.foreign_resume_hint.is_some();
+    // SiSu welcome quota line: one restrained summary row above the prompt
+    // whenever billing data is available; consumer billing surface only.
+    let quota_line = if p.usage_visible {
+        p.credit_balance.and_then(|bal| {
+            crate::views::credit_bar::welcome_quota_summary(bal, p.subscription_tier)
+        })
+    } else {
+        None
+    };
     // Tip slot precedence: pending update > privacy banner (wraps, so its
-    // height depends on width) > resume hint > random tip. The update
-    // outranks the upsell so a ready update is never invisible; the banner
-    // takes the slot back once it's applied.
+    // height depends on width) > resume hint > quota line > random tip. The
+    // update outranks the upsell so a ready update is never invisible; the
+    // banner takes the slot back once it's applied.
     let tip_height = if !show_picker {
         if has_update_tip {
             1u16
@@ -1757,6 +1766,8 @@ fn render_welcome_done(
             let inset = prompt::prompt_inset(p.compact);
             crate::views::privacy_banner::height(content_area.width.saturating_sub(inset * 2))
         } else if has_resume_tip {
+            1u16
+        } else if quota_line.is_some() {
             1u16
         } else if let Some(tip_text) = p.tip {
             let inset = prompt::prompt_inset(welcome_compact);
@@ -2235,6 +2246,38 @@ fn render_welcome_done(
                 .render(tip_inset, buf);
         }
 
+        // SiSu welcome quota line: billing summary in the tip slot, below
+        // update/privacy/resume precedence and above the random tip. Muted
+        // single row — the full breakdown lives in /usage.
+        if !p.privacy_banner
+            && p.pending_update_version.is_none()
+            && p.foreign_resume_hint.is_none()
+            && let Some(quota_text) = &quota_line
+            && layout.tip.height > 0
+        {
+            let [_, tip_centered, _] = Layout::horizontal([
+                Constraint::Min(0),
+                Constraint::Length(content_area.width),
+                Constraint::Min(0),
+            ])
+            .flex(Flex::Center)
+            .areas(layout.tip);
+            let inset = prompt::prompt_inset(p.compact);
+            let tip_inset = Rect {
+                x: tip_centered.x + inset,
+                y: tip_centered.y,
+                width: tip_centered.width.saturating_sub(inset * 2),
+                height: tip_centered.height,
+            };
+            let line = Line::from(Span::styled(
+                quota_text.as_str(),
+                Style::default().fg(theme.gray),
+            ));
+            Paragraph::new(line)
+                .style(Style::default().bg(theme.bg_base))
+                .render(tip_inset, buf);
+        }
+
         let warning = p.credit_balance.and_then(|bal| {
             crate::views::credit_bar::usage_warning(bal, p.auto_topup, p.usage_visible)
         });
@@ -2261,8 +2304,9 @@ fn render_welcome_done(
             if p.privacy_banner
                 || p.pending_update_version.is_some()
                 || p.foreign_resume_hint.is_some()
+                || quota_line.is_some()
             {
-                // Banner/update/resume tip already rendered above with custom styling.
+                // Banner/update/resume/quota tip already rendered above with custom styling.
                 None
             } else {
                 p.tip
