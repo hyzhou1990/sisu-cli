@@ -2,7 +2,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 
-import { NATIVE_PAGER_FALLBACK_NOTICE, playMobiusIntro, playTreeIntro, runTui, shouldAnimateSplash, tuiHelp } from './tui'
+import { NATIVE_PAGER_FALLBACK_NOTICE, runTui, TUI_REQUIRES_TTY_NOTICE } from './tui'
 
 function scriptedIo(answers: string[]) {
   const written: string[] = []
@@ -22,172 +22,90 @@ function scriptedIo(answers: string[]) {
   }
 }
 
+const account = { token: 'jwt', email: 'ada@sisu.chat', user_id: 'u1', api_base: 'https://www.sisu.chat' }
+
+const healthyHttp = () =>
+  jest.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: async () => ({ ok: true, complete: true, models: true }),
+  })
+
 describe('sisu tui', () => {
-  it('does not spawn the grok pager when logged out; starts SiSu login instead', async () => {
-    const { io } = scriptedIo([])
-    const webLogin = jest.fn().mockResolvedValue('ada@sisu.chat')
-    const pager = jest.fn().mockResolvedValue(0)
-    const auth = jest.fn()
-      .mockReturnValueOnce(null)
-      .mockReturnValue({ token: 'jwt', email: 'ada@sisu.chat', user_id: 'u1', api_base: 'https://www.sisu.chat' })
-    // Health must succeed so the injected pager can run after login (prod /health is still 404).
-    const http = jest.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ ok: true, complete: true, models: true }),
-    })
-    await runTui(io, { auth, webLogin, pager, http, animate: false, color: false, columns: 80 })
-    expect(webLogin).toHaveBeenCalled()
-  })
-
-  it('falls back to Node TUI when runtime health fails and does not spawn pager', async () => {
-    const { io, written } = scriptedIo(['/quit'])
-    const pager = jest.fn()
-    await runTui(io, {
-      auth: () => ({ token: 'jwt', email: 'a@b.c', user_id: '1', api_base: 'https://www.sisu.chat' }),
-      http: jest.fn().mockResolvedValue({ ok: false, status: 404, json: async () => ({}) }),
-      status: async () => 'user a@b.c',
-      pager,
-      animate: false,
-      color: false,
-      columns: 80,
-    })
-    expect(pager).not.toHaveBeenCalled()
-    expect(written.join('')).toMatch(/SiSu runtime/i)
-  })
-
-  it('signs in at startup when logged out, then enters the line TUI', async () => {
-    const { io, written } = scriptedIo(['/quit'])
+  it('signs in at startup when logged out, then spawns the native pager', async () => {
+    const { io, written } = scriptedIo([])
     const webLogin = jest.fn(async (input: { onStart?: (info: { verification_uri: string; verification_uri_complete: string; user_code: string }) => void } = {}) => {
       input.onStart?.({
         verification_uri: 'https://www.sisu.chat/api/auth/cli/verify',
         verification_uri_complete: 'https://www.sisu.chat/api/auth/cli/verify?user_code=AA-11',
         user_code: 'AA-11',
       })
-      return 'ada@b.c'
+      return 'ada@sisu.chat'
     })
-    const account = { token: 't', email: 'ada@b.c', user_id: 'u', api_base: 'https://www.sisu.chat' }
     const auth = jest.fn().mockReturnValueOnce(null).mockReturnValue(account)
+    const spawnGrokPager = jest.fn().mockResolvedValue(0)
+    const code = await runTui(io, { auth, webLogin, spawnGrokPager, http: healthyHttp() })
+    expect(code).toBe(0)
+    expect(webLogin).toHaveBeenCalledTimes(1)
+    expect(spawnGrokPager).toHaveBeenCalledWith([])
+    expect(written.join('')).toMatch(/Open https:\/\/www\.sisu\.chat\/api\/auth\/cli\/verify/)
+    expect(written.join('')).toMatch(/logged in as ada@sisu\.chat/)
+  })
+
+  it('fails hard when the runtime health probe fails and never spawns the pager', async () => {
+    const { io, written } = scriptedIo([])
+    const spawnGrokPager = jest.fn()
     const code = await runTui(io, {
-      auth,
-      webLogin,
-      animate: false,
-      color: false,
-      columns: 80,
-      status: async () => 'user ada@b.c',
-      exec: jest.fn(),
-      // Probe fail → Node line TUI (prod /health still 404).
+      auth: () => account,
+      spawnGrokPager,
       http: jest.fn().mockResolvedValue({ ok: false, status: 404, json: async () => ({}) }),
     })
-    expect(code).toBe(0)
-    expect(webLogin).toHaveBeenCalled()
-    expect(written.join('')).toMatch(/Open https:\/\/www\.sisu\.chat\/api\/auth\/cli\/verify/)
-    expect(written.join('')).toMatch(/logged in as ada@b\.c/)
+    expect(code).toBe(1)
+    expect(spawnGrokPager).not.toHaveBeenCalled()
+    expect(written.join('')).toMatch(/SiSu runtime is not available/)
+    expect(written.join('')).not.toMatch(/fallback shell — not the full SiSu TUI/)
   })
 
-  it('routes slash commands and billed prompts', async () => {
-    const { io, written } = scriptedIo(['/help', '/status', 'hello from tui', '/quit'])
-    const exec = jest.fn().mockResolvedValue({ conversationId: 'c1', text: 'hi back' })
-    const code = await runTui(io, {
-      auth: () => ({ token: 't', email: 'a@b.c', user_id: 'u', api_base: 'https://www.sisu.chat' }),
-      status: async () => 'user a@b.c\nquota 12 pts',
-      exec,
-      ls: () => 'README.md',
-      http: jest.fn(),
-      columns: 80,
-      animate: false,
-      color: false,
-    })
-    expect(code).toBe(0)
-    const out = written.join('')
-    expect(out).toContain(tuiHelp().split('\n')[0])
-    expect(out).toContain('quota 12 pts')
-    expect(out).toContain('hi back')
-    expect(out).toContain('bye')
-    expect(exec).toHaveBeenCalledWith('hello from tui', { newConversation: false, client: 'tui' }, expect.anything())
-  })
-
-  it('lists and opens saved cloud conversations', async () => {
-    const { io, written } = scriptedIo(['/history', '/open conv-99', '/quit'])
-    const history = jest.fn().mockResolvedValue('conv-99  prior turn [tui]')
-    const openThread = jest.fn().mockResolvedValue('opened conv-99')
-    const code = await runTui(io, {
-      auth: () => ({ token: 't', email: 'a@b.c', user_id: 'u', api_base: 'https://www.sisu.chat' }),
-      status: async () => 'user a@b.c',
-      history,
-      openThread,
-      exec: jest.fn(),
-      http: jest.fn(),
-      columns: 80,
-      animate: false,
-      color: false,
-    })
-    expect(code).toBe(0)
-    expect(history).toHaveBeenCalled()
-    expect(openThread).toHaveBeenCalledWith('conv-99', expect.anything())
-    expect(written.join('')).toContain('opened conv-99')
-  })
-
-  it('animates the ∞ Möbius so the half-twist travels', async () => {
+  it('refuses the interactive TUI without a terminal and points at sisu exec', async () => {
     const { io, written } = scriptedIo([])
-    await playTreeIntro(io, {
-      columns: 72,
-      frames: 6,
-      color: false,
-      sleep: async () => undefined,
+    const probe = jest.fn()
+    const webLogin = jest.fn()
+    const code = await runTui(io, {
+      auth: () => account,
+      webLogin,
+      probe,
+      http: healthyHttp(),
     })
-    const out = written.join('')
-    expect(out).toContain('\x1b[?25l')
-    expect((out.match(/\x1b\[\d+A/g) || []).length).toBe(5)
-    expect(out).toMatch(/思溯/)
-    expect(out).toMatch(/思有所溯/)
-    expect(out).not.toMatch(/NaN/)
+    expect(code).toBe(1)
+    expect(webLogin).not.toHaveBeenCalled()
+    expect(probe).not.toHaveBeenCalled()
+    expect(written.join('')).toContain(TUI_REQUIRES_TTY_NOTICE.trim())
+    expect(written.join('')).toContain('sisu exec "<prompt>"')
   })
 
-  it('animates a rotating Möbius ring before the prompt', async () => {
+  it('fails hard when the pager cannot be spawned at the last moment', async () => {
     const { io, written } = scriptedIo([])
-    await playMobiusIntro(io, {
-      columns: 48,
-      frames: 6,
-      color: false,
-      sleep: async () => undefined,
+    const spawnGrokPager = jest.fn().mockResolvedValue(null)
+    const code = await runTui(io, {
+      auth: () => account,
+      spawnGrokPager,
+      http: healthyHttp(),
     })
-    const out = written.join('')
-    expect(out).toContain('\x1b[?25l')
-    expect((out.match(/\x1b\[\d+A/g) || []).length).toBe(5)
-    expect(out).toMatch(/思溯/)
+    expect(code).toBe(1)
+    expect(spawnGrokPager).toHaveBeenCalledTimes(1)
+    expect(written.join('')).toContain(NATIVE_PAGER_FALLBACK_NOTICE.trim())
   })
 
-  it('disables the splash when SISU_TUI_STATIC=1', () => {
-    expect(shouldAnimateSplash({ SISU_TUI_STATIC: '1' }, true)).toBe(false)
-    expect(shouldAnimateSplash({}, true)).toBe(true)
-    expect(shouldAnimateSplash({}, false)).toBe(false)
-  })
-
-  it('uses the fullscreen pager on a TTY after splash', async () => {
-    const runPager = jest.fn().mockResolvedValue(0)
+  it('returns the native pager exit code', async () => {
     const { io } = scriptedIo([])
+    const spawnGrokPager = jest.fn().mockResolvedValue(42)
     const code = await runTui(io, {
-      auth: () => ({ token: 't', email: 'a@b.c', user_id: 'u', api_base: 'https://www.sisu.chat' }),
-      status: async () => 'user a@b.c',
-      animate: true,
-      color: false,
-      columns: 48,
-      sleep: async () => undefined,
-      pager: runPager,
-      http: jest.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({ ok: true, complete: true, models: true }),
-      }),
+      auth: () => account,
+      spawnGrokPager,
+      http: healthyHttp(),
     })
-    expect(code).toBe(0)
-    expect(runPager).toHaveBeenCalled()
-    expect(runPager).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.anything(),
-      expect.objectContaining({ email: 'a@b.c' }),
-    )
+    expect(code).toBe(42)
+    expect(spawnGrokPager).toHaveBeenCalledWith([])
   })
 
   it('does not open another browser login when a session already exists', async () => {
@@ -196,56 +114,26 @@ describe('sisu tui', () => {
     const spawnGrokPager = jest.fn()
       .mockResolvedValueOnce(10)
       .mockResolvedValueOnce(0)
-    const pager = jest.fn().mockResolvedValue(0)
-    const http = jest.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ ok: true, complete: true, models: true }),
-    })
     const code = await runTui(io, {
-      auth: () => ({
-        token: 'jwt',
-        email: 'ada@sisu.chat',
-        user_id: 'u1',
-        api_base: 'https://www.sisu.chat',
-      }),
+      auth: () => account,
       webLogin,
       spawnGrokPager,
-      pager,
-      http,
-      animate: false,
-      color: false,
-      columns: 80,
+      http: healthyHttp(),
     })
     expect(code).toBe(0)
     expect(spawnGrokPager).toHaveBeenCalledTimes(2)
     expect(spawnGrokPager).toHaveBeenCalledWith([])
     expect(webLogin).not.toHaveBeenCalled()
-    expect(pager).not.toHaveBeenCalled()
   })
 
   it('passes --resume to the grok pager so exit hints work as sisu --resume', async () => {
     const { io } = scriptedIo([])
     const spawnGrokPager = jest.fn().mockResolvedValue(0)
-    const http = jest.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ ok: true, complete: true, models: true }),
-    })
     const code = await runTui(io, {
-      auth: () => ({
-        token: 'jwt',
-        email: 'ada@sisu.chat',
-        user_id: 'u1',
-        api_base: 'https://www.sisu.chat',
-      }),
+      auth: () => account,
       spawnGrokPager,
-      pager: jest.fn(),
-      http,
+      http: healthyHttp(),
       pagerArgs: ['--resume', '01a07c14-4b74-7460-8885-09183ee5d261'],
-      animate: false,
-      color: false,
-      columns: 80,
     })
     expect(code).toBe(0)
     expect(spawnGrokPager).toHaveBeenCalledWith(['--resume', '01a07c14-4b74-7460-8885-09183ee5d261'])
@@ -255,37 +143,21 @@ describe('sisu tui', () => {
     const { io } = scriptedIo([])
     let session: { token: string; email: string; user_id: string; api_base: string } | null = null
     const webLogin = jest.fn(async () => {
-      session = {
-        token: 'jwt',
-        email: 'ada@sisu.chat',
-        user_id: 'u1',
-        api_base: 'https://www.sisu.chat',
-      }
+      session = account
       return 'ada@sisu.chat'
     })
     const spawnGrokPager = jest.fn()
       .mockResolvedValueOnce(10)
       .mockResolvedValueOnce(0)
-    const pager = jest.fn().mockResolvedValue(0)
-    const http = jest.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ ok: true, complete: true, models: true }),
-    })
     const code = await runTui(io, {
       auth: () => session,
       webLogin,
       spawnGrokPager,
-      pager,
-      http,
-      animate: false,
-      color: false,
-      columns: 80,
+      http: healthyHttp(),
     })
     expect(code).toBe(0)
     expect(webLogin).toHaveBeenCalledTimes(1)
     expect(spawnGrokPager).toHaveBeenCalledTimes(2)
-    expect(pager).not.toHaveBeenCalled()
   })
 
   it('stays on grok pager after exit 10 when a session is already saved', async () => {
@@ -293,29 +165,14 @@ describe('sisu tui', () => {
     const spawnGrokPager = jest.fn()
       .mockResolvedValueOnce(10)
       .mockResolvedValueOnce(0)
-    const pager = jest.fn()
     const code = await runTui(io, {
-      auth: () => ({
-        token: 'jwt',
-        email: 'ada@sisu.chat',
-        user_id: 'u1',
-        api_base: 'https://www.sisu.chat',
-      }),
+      auth: () => account,
       webLogin: jest.fn(),
       spawnGrokPager,
-      pager,
-      http: jest.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({ ok: true, complete: true, models: true }),
-      }),
-      animate: false,
-      color: false,
-      columns: 80,
+      http: healthyHttp(),
     })
     expect(code).toBe(0)
     expect(spawnGrokPager).toHaveBeenCalledTimes(2)
-    expect(pager).not.toHaveBeenCalled()
     expect(written.join('')).not.toMatch(/session already saved/)
   })
 
@@ -330,21 +187,9 @@ describe('sisu tui', () => {
     Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
     try {
       const code = await runTui(io, {
-        auth: () => ({
-          token: 'jwt',
-          email: 'ada@sisu.chat',
-          user_id: 'u1',
-          api_base: 'https://www.sisu.chat',
-        }),
+        auth: () => account,
         pagerRunnable: () => false,
-        http: jest.fn().mockResolvedValue({
-          ok: true,
-          status: 200,
-          json: async () => ({ ok: true, complete: true, models: true }),
-        }),
-        animate: false,
-        color: false,
-        columns: 80,
+        http: healthyHttp(),
       })
       expect(code).toBe(1)
       expect(written.join('')).toContain(NATIVE_PAGER_FALLBACK_NOTICE.trim())
@@ -369,21 +214,9 @@ describe('sisu tui', () => {
     Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
     try {
       const code = await runTui(io, {
-        auth: () => ({
-          token: 'jwt',
-          email: 'ada@sisu.chat',
-          user_id: 'u1',
-          api_base: 'https://www.sisu.chat',
-        }),
+        auth: () => account,
         pagerRunnable: () => false,
-        http: jest.fn().mockResolvedValue({
-          ok: true,
-          status: 200,
-          json: async () => ({ ok: true, complete: true, models: true }),
-        }),
-        animate: false,
-        color: false,
-        columns: 80,
+        http: healthyHttp(),
       })
       expect(code).toBe(1)
       expect(written.join('')).toContain(NATIVE_PAGER_FALLBACK_NOTICE.trim())
@@ -397,32 +230,17 @@ describe('sisu tui', () => {
     }
   })
 
-  it('does not fall through to the Node TUI if grok pager keeps exiting 10', async () => {
+  it('stays a failed launch when the grok pager keeps exiting 10', async () => {
     const { io, written } = scriptedIo([])
     const spawnGrokPager = jest.fn().mockResolvedValue(10)
-    const pager = jest.fn()
     const code = await runTui(io, {
-      auth: () => ({
-        token: 'jwt',
-        email: 'ada@sisu.chat',
-        user_id: 'u1',
-        api_base: 'https://www.sisu.chat',
-      }),
+      auth: () => account,
       webLogin: jest.fn(),
       spawnGrokPager,
-      pager,
-      http: jest.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({ ok: true, complete: true, models: true }),
-      }),
-      animate: false,
-      color: false,
-      columns: 80,
+      http: healthyHttp(),
     })
     expect(code).toBe(10)
     expect(spawnGrokPager).toHaveBeenCalledTimes(2)
-    expect(pager).not.toHaveBeenCalled()
     expect(written.join('')).toMatch(/still requesting login/)
   })
 })

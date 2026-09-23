@@ -162,7 +162,6 @@ it('probe 404 does not spawn pager', async () => {
     question: async () => '/quit',
     questionPassword: async () => '/quit',
   }
-  const pager = jest.fn().mockResolvedValue(0)
   const spawnGrokPager = jest.fn().mockResolvedValue(0)
   const code = await runTui(io, {
     auth: () => ({
@@ -172,17 +171,11 @@ it('probe 404 does not spawn pager', async () => {
       api_base: 'https://www.sisu.chat',
     }),
     http: jest.fn().mockResolvedValue({ ok: false, status: 404, json: async () => ({}) }),
-    status: async () => 'user ada@sisu.chat',
-    pager,
     spawnGrokPager,
-    animate: false,
-    color: false,
-    columns: 80,
   })
-  expect(pager).not.toHaveBeenCalled()
   expect(spawnGrokPager).not.toHaveBeenCalled()
   expect(written.join('')).toMatch(/will not fall back to xAI/i)
-  expect(code).toBe(0)
+  expect(code).toBe(1)
 })
 
 it('direct pager without SISU_ACCESS_POINT exits 2; with flag --help works', () => {
