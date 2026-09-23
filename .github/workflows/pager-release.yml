@@ -1,7 +1,6 @@
 name: Pager release assets
 
-# Tag v* builds darwin-arm64 + linux + win32-x64.
-# darwin-x64 is dispatch-only (macos-13); missing asset → install-pager 404 → Node TUI.
+# Tag v* builds darwin-arm64, darwin-x64, linux, and win32-x64.
 # vendor/grok-build is gitignored — this job fetches the pin then applies overlays.
 # Do not upload placeholder binaries.
 
@@ -203,7 +202,7 @@ jobs:
 
   build-pager-x64:
     name: pager darwin-x64
-    if: github.event_name == 'workflow_dispatch' && contains(github.event.inputs.platforms, 'darwin-x64')
+    if: ${{ github.event_name != 'workflow_dispatch' || contains(github.event.inputs.platforms, 'darwin-x64') }}
     runs-on: macos-13
     timeout-minutes: 180
     steps:
