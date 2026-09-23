@@ -13,6 +13,7 @@ crates/codegen/xai-grok-shell/src/auth/flow.rs
 crates/codegen/xai-grok-shell/src/remote/client.rs
 crates/codegen/xai-grok-shell/src/remote/client_tests.rs
 crates/codegen/xai-grok-shell/src/extensions/auth.rs
+crates/codegen/xai-grok-shell/src/extensions/billing.rs
 crates/codegen/xai-grok-shell/src/session/acp_session_tests/auth_error_no_retry_tests.rs
 crates/codegen/xai-grok-pager-bin/src/sisu_access_point.rs
 crates/codegen/xai-grok-pager-bin/src/sisu_boot.rs
@@ -35,6 +36,7 @@ crates/codegen/xai-grok-pager/src/views/welcome/mod.rs
 crates/codegen/xai-grok-pager/src/views/welcome/logo.rs
 crates/codegen/xai-grok-pager/src/views/welcome/mobius.rs
 crates/codegen/xai-grok-pager/src/views/welcome/hero_box.rs
+crates/codegen/xai-grok-pager/src/views/credit_bar.rs
 crates/codegen/xai-grok-pager/src/views/tutorial.rs
 crates/codegen/xai-grok-pager-minimal/src/welcome.rs
 crates/codegen/xai-grok-pager-minimal/src/auth.rs

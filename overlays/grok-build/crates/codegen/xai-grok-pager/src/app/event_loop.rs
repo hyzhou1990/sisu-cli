@@ -2034,7 +2034,10 @@ pub(crate) async fn run(
             return Ok(finish_run(&mut app));
         }
         // Fetch billing early so the welcome screen can show a credit warning.
-        if app.usage_visible {
+        // SiSu access-point: the welcome quota line is core welcome chrome, so
+        // fetch even when usage_visible has not resolved — the shell answers
+        // from the host session JWT, not the (empty) grok AuthStore.
+        if app.usage_visible || xai_grok_shell::sisu_access_point::active() {
             let effs = vec![super::actions::Effect::FetchAppBilling];
             if process_effects(effs, &mut tasks, &mut app, &progress_tx) {
                 return Ok(finish_run(&mut app));
