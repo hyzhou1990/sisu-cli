@@ -30,6 +30,53 @@ pub enum UpdateRunMode {
 const PROMPT_UPDATE_NOW: &str = "Update now? [Y/n/d]";
 const MSG_AUTO_UPDATE_BACKGROUND: &str = "Auto-update running in background.";
 const MSG_RUN_UPDATE_MANUAL: &str = "Run `grok update` to get the latest version.";
+
+/// SiSu host opt-in for the harness's own updater. The node host sets this
+/// when it wants the pager to drive SiSu self-updates (background or
+/// explicit `pager update`); without it, access-point mode keeps the legacy
+/// "run sisu update" hand-off to the node host's own updater.
+const SISU_AUTO_UPDATE_ENV: &str = "SISU_AUTO_UPDATE";
+
+/// npm package the SiSu flow installs — the node host's own distribution.
+const SISU_NPM_PACKAGE: &str = "@stevezhou/sisu";
+
+/// The SiSu distribution is npm-only. The upstream installer-detection env
+/// vars (`GROK_MANAGED_BY_NPM`, …) are never set by the node host, so
+/// `get_installer()` would fall through to the config default "internal" —
+/// the raw-binary CDN path, which must never run against a sisu build.
+const SISU_INSTALLER: &str = "npm";
+
+/// True when the node host opted this build into the harness's own updater
+/// (`SISU_AUTO_UPDATE=1`/`true`). Public so pager-bin's startup gates and
+/// command arms apply the same opt-in as the update flows here.
+pub fn sisu_auto_update_enabled() -> bool {
+    std::env::var(SISU_AUTO_UPDATE_ENV)
+        .map(|v| {
+            let v = v.trim();
+            v == "1" || v.eq_ignore_ascii_case("true")
+        })
+        .unwrap_or(false)
+}
+
+/// Product name in user-facing update messages.
+fn product_display_name() -> &'static str {
+    if xai_grok_shell::sisu_access_point::active() {
+        "SiSu CLI"
+    } else {
+        "Grok Build"
+    }
+}
+
+/// npm package the npm installer targets. Upstream builds always install
+/// `@xai-official/grok`; sisu access-point builds install the node host
+/// package instead.
+fn npm_package_name() -> &'static str {
+    if xai_grok_shell::sisu_access_point::active() {
+        SISU_NPM_PACKAGE
+    } else {
+        crate::version::NPM_PACKAGE
+    }
+}
 /// An empty or `"stable"` channel means stable — the installers' default
 /// (`CHANNEL="${GROK_CHANNEL:-stable}"` in install.sh).
 fn is_stable_channel(channel: &str) -> bool {
@@ -75,7 +122,7 @@ fn manual_install_cmd(channel: &str) -> String {
 /// Build a reinstall hint for a known installer type.
 fn reinstall_hint(installer: &str, channel: &str) -> String {
     match installer {
-        "npm" => "Please reinstall via npm:\n  npm i -g @xai-official/grok".to_string(),
+        "npm" => format!("Please reinstall via npm:\n  npm i -g {}", npm_package_name()),
         "gh-release" => "Please reinstall via GitHub Releases:\n  gh release download --repo xai-org-shared/grok-build --pattern 'grok-*' --output grok && chmod +x grok".to_string(),
         _ => format!("Please reinstall via:\n  {}", manual_install_cmd(channel)),
     }
@@ -233,7 +280,13 @@ pub fn print_update_status(status: &UpdateStatus, json: bool) -> anyhow::Result<
 }
 
 pub async fn check_update_status(update_config: &UpdateConfig) -> UpdateStatus {
-    let installer = get_installer().await.map(|value| value.to_string());
+    // sisu distribution is npm-only; report the installer the sisu flow
+    // actually uses instead of the config default ("internal" CDN path).
+    let installer = if xai_grok_shell::sisu_access_point::active() {
+        Some(SISU_INSTALLER.to_string())
+    } else {
+        get_installer().await.map(|value| value.to_string())
+    };
     let current_version = get_installed_grok_version();
     let current_config = config::load_config().await;
     let auto_update = current_config.cli.auto_update;
@@ -362,7 +415,12 @@ async fn fetch_update_plan(
 /// on the installer (via `installer_allows_downgrade`) so npm is never
 /// downgraded — the decision depends on the installer, never the caller.
 pub async fn auto_update_target(update_config: &UpdateConfig) -> Option<(&'static str, String)> {
-    let installer = get_installer().await?;
+    // sisu distribution is npm-only; never converge onto the upstream CDN binary.
+    let installer = if xai_grok_shell::sisu_access_point::active() {
+        SISU_INSTALLER
+    } else {
+        get_installer().await?
+    };
     let current = get_installed_grok_version();
     let policy = config::VersionPolicy::resolve();
     let UpdatePlan::Install { target, .. } = fetch_update_plan(installer, update_config, &policy)
@@ -414,8 +472,14 @@ pub async fn ensure_latest_on_disk(update_config: &UpdateConfig) -> Result<Ensur
         installed: None,
         relaunch_needed: false,
     };
-    let Some(installer) = get_installer().await else {
-        return Ok(outcome);
+    // sisu distribution is npm-only; never converge onto the upstream CDN binary.
+    let installer = if xai_grok_shell::sisu_access_point::active() {
+        SISU_INSTALLER
+    } else {
+        match get_installer().await {
+            Some(i) => i,
+            None => return Ok(outcome),
+        }
     };
     heal_managed_install(installer).await;
     let allow_downgrade = installer_allows_downgrade(installer);
@@ -597,12 +661,23 @@ impl BackgroundUpdateCheck {
 /// ready when the user quits and relaunches. When another process (an earlier
 /// TUI, the leader's hourly checker) already put the target version on disk,
 /// no download is started — only the restart hint is surfaced.
+///
+/// In SiSu access-point mode this is inert unless the node host opted in via
+/// `SISU_AUTO_UPDATE` ([`sisu_auto_update_enabled`]); the installer is then
+/// pinned to npm (`SISU_INSTALLER`) and the spawned `update` child runs the
+/// SiSu flow ([`sisu_run_update`]).
 pub async fn check_update_background(update_config: &UpdateConfig) -> BackgroundUpdateCheck {
-    if xai_grok_shell::sisu_access_point::active() {
+    let sisu_mode = xai_grok_shell::sisu_access_point::active();
+    if sisu_mode && !sisu_auto_update_enabled() {
         return BackgroundUpdateCheck::none();
     }
-    let Some(installer) = get_installer().await else {
-        return BackgroundUpdateCheck::none();
+    let installer = if sisu_mode {
+        SISU_INSTALLER
+    } else {
+        let Some(installer) = get_installer().await else {
+            return BackgroundUpdateCheck::none();
+        };
+        installer
     };
 
     heal_managed_install(installer).await;
@@ -691,12 +766,19 @@ pub async fn run_update_if_available(
     trigger: CliUpdateTrigger,
     update_config: &UpdateConfig,
 ) -> Result<bool> {
-    if xai_grok_shell::sisu_access_point::active() {
+    let sisu_mode = xai_grok_shell::sisu_access_point::active();
+    if sisu_mode && !sisu_auto_update_enabled() {
         return Ok(false);
     }
-    let Some(inst) = get_installer().await else {
-        // Skip update check if no known installer.
-        return Ok(false);
+    let inst = if sisu_mode {
+        // sisu distribution is npm-only; never touch the upstream CDN path.
+        SISU_INSTALLER
+    } else {
+        let Some(inst) = get_installer().await else {
+            // Skip update check if no known installer.
+            return Ok(false);
+        };
+        inst
     };
 
     heal_managed_install(inst).await;
@@ -751,8 +833,11 @@ pub async fn run_update_if_available(
     let channel_label = format!(" [{}]", update_config.channel);
     if auto_update {
         eprintln!(
-            "A new version of Grok Build is available: {} -> {}{}",
-            current_version, latest_version, channel_label
+            "A new version of {} is available: {} -> {}{}",
+            product_display_name(),
+            current_version,
+            latest_version,
+            channel_label
         );
         if interactive {
             if let Err(e) = run_update_subcommand(run_mode, trigger).await {
@@ -779,8 +864,11 @@ pub async fn run_update_if_available(
             return Ok(false);
         }
         eprintln!(
-            "A new version of Grok Build is available: {} -> {}{}",
-            current_version, latest_version, channel_label
+            "A new version of {} is available: {} -> {}{}",
+            product_display_name(),
+            current_version,
+            latest_version,
+            channel_label
         );
         if interactive {
             eprintln!("{}", PROMPT_UPDATE_NOW);
@@ -2559,7 +2647,7 @@ fn install_npm(target: Option<&str>, channel: &str, npm_registry: Option<&str>) 
     warn_if_other_grok_processes_running();
 
     let version_arg = match target {
-        Some(ver) => format!("@xai-official/grok@{ver}"),
+        Some(ver) => format!("{}@{}", npm_package_name(), ver),
         None => {
             // All current callers resolve the version via get_latest_version
             // (which applies max(stable, alpha) for the alpha channel) before
@@ -2570,7 +2658,8 @@ fn install_npm(target: Option<&str>, channel: &str, npm_registry: Option<&str>) 
                 "install_npm called without a resolved version, falling back to dist-tag"
             );
             format!(
-                "@xai-official/grok@{}",
+                "{}@{}",
+                npm_package_name(),
                 if channel == "alpha" {
                     "alpha"
                 } else {
@@ -2651,6 +2740,9 @@ pub async fn run_update(
     trigger: CliUpdateTrigger,
 ) -> Result<Option<String>> {
     if xai_grok_shell::sisu_access_point::active() {
+        if sisu_auto_update_enabled() {
+            return sisu_run_update(pinned_version, update_config, trigger).await;
+        }
         eprintln!("run sisu update");
         return Ok(None);
     }
@@ -2831,6 +2923,108 @@ pub async fn run_update(
         eprintln!("  Please restart Grok.");
     }
     Ok(Some(target_version.to_string()))
+}
+
+/// SiSu access-point update flow (`SISU_AUTO_UPDATE` opt-in).
+///
+/// The harness's own updater, redirected at the SiSu distribution: resolve
+/// the latest version from the SiSu runtime version manifest
+/// (`GET {base}/cli/version`, see `version.rs`), then
+/// `npm i -g @stevezhou/sisu@<version>`. The node host and the vendored
+/// pager ship inside that npm package, so the npm install IS the pager
+/// update; on macOS `warn_if_other_grok_processes_running` covers the
+/// in-place-replace hazard for any process still running the vendored
+/// binary directly.
+///
+/// Reached via `pager update` (explicit, or the detached NonBlocking child
+/// spawn from `run_update_subcommand`) with `SISU_ACCESS_POINT=1` (always
+/// set for sisu launches) + `SISU_AUTO_UPDATE=1` (host opt-in). With the
+/// opt-in set, pager-bin's `should_check_for_updates` also lets the
+/// harness's own background triggers run — TUI startup
+/// `check_update_background`, headless/stdio
+/// `run_update_if_available(NonBlocking)`, leader hourly
+/// `ensure_latest_on_disk`. Without the opt-in, access-point mode keeps the
+/// legacy "run sisu update" hand-off to the node host's own updater.
+async fn sisu_run_update(
+    pinned_version: Option<&str>,
+    update_config: &UpdateConfig,
+    trigger: CliUpdateTrigger,
+) -> Result<Option<String>> {
+    // The config kill-switch applies to background triggers; an explicit
+    // `pager update` from the host stays a direct user action.
+    if matches!(trigger, CliUpdateTrigger::AutoBackground) {
+        let current_config = config::load_config().await;
+        if current_config.cli.auto_update == Some(false) {
+            return Ok(None);
+        }
+    }
+
+    let current_version = get_installed_grok_version();
+    let policy = config::VersionPolicy::resolve();
+
+    let target = match pinned_version {
+        Some(version) => {
+            if let Err(e) = crate::version_policy::check_install_target(&policy, version) {
+                anyhow::bail!("{e}");
+            }
+            version.to_string()
+        }
+        None => {
+            // SISU_INSTALLER is symbolic here: fetch_latest_version resolves
+            // against the SiSu manifest in access-point mode regardless.
+            match fetch_update_plan(SISU_INSTALLER, update_config, &policy).await? {
+                UpdatePlan::Install { target, .. } => target,
+                UpdatePlan::Skip { latest } => {
+                    let stable_ptr = try_fetch_stable_pointer().await;
+                    write_version_cache(&latest, stable_ptr.as_deref()).await;
+                    eprintln!(
+                        "The latest release ({latest}) is not an allowed update; \
+                         keeping the current version ({current_version})."
+                    );
+                    return Ok(None);
+                }
+                UpdatePlan::Unavailable { latest, target } => {
+                    anyhow::bail!(
+                        "The required minimum version ({target}) is newer than the latest \
+                         available release ({latest}). Contact your administrator."
+                    );
+                }
+            }
+        }
+    };
+
+    let Some(needs) = needs_update(
+        &current_version,
+        &target,
+        &update_config.channel,
+        // npm registries can serve stale metadata; never downgrade.
+        false,
+    ) else {
+        anyhow::bail!(
+            "Unsupported release channel '{}' (current={}, target={}). \
+             Supported channels: stable, alpha, enterprise.",
+            update_config.channel,
+            current_version,
+            target
+        );
+    };
+    if !needs {
+        let stable_ptr = try_fetch_stable_pointer().await;
+        write_version_cache(&target, stable_ptr.as_deref()).await;
+        eprintln!("Already up to date ({current_version}).");
+        return Ok(Some(target));
+    }
+
+    eprintln!("Updating SiSu CLI {current_version} → {target}");
+    run_install_script(SISU_INSTALLER, Some(&target), update_config, trigger).await?;
+    let stable_ptr = try_fetch_stable_pointer().await;
+    write_version_cache(&target, stable_ptr.as_deref()).await;
+    eprintln!("  ✓ sisu v{target} installed successfully!");
+
+    if std::env::var_os("GROK_AUTO_UPDATE").is_none() {
+        eprintln!("  Please restart SiSu.");
+    }
+    Ok(Some(target))
 }
 
 /// Refresh managed config post-update (best-effort, staleness-gated), for
