@@ -20,6 +20,7 @@ import { SISU_BRAND, sisuProductSurfaces } from './logo'
 import { DEFAULT_API_BASE } from './store'
 import { defaultTuiIo, runTui } from './tui'
 import { fetchLatestVersion, formatUpdateNotice, installNpmPackage, maybeLatestUpdate, runUpdate } from './update'
+import { findInstallSources } from './updateSources'
 
 const req = createRequire(__filename)
 
@@ -156,6 +157,7 @@ export async function runCli(
       writeErr: (text) => {
         process.stderr.write(text)
       },
+      checkDrift: () => findInstallSources(),
     })
   }
   if (command === 'status') {

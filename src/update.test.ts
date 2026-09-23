@@ -10,7 +10,9 @@ import {
   npmInstallCwd,
   npmInvocation,
   planUpdate,
+  runUpdate,
 } from './update'
+import type { InstallSource } from './updateSources'
 
 it('plans a CLI upgrade when npm latest is newer than this process', () => {
   expect(planUpdate('0.3.17', '0.3.18')).toEqual({ action: 'upgrade', from: '0.3.17', to: '0.3.18' })
@@ -152,5 +154,77 @@ describe('npmInvocation on Windows', () => {
       file: 'npm',
       args: ['install'],
     })
+  })
+})
+
+describe('runUpdate sibling-install drift warnings', () => {
+  const brewSource = {
+    root: '/opt/homebrew/lib/node_modules/@stevezhou/sisu',
+    prefix: '/opt/homebrew',
+    version: '0.3.33',
+  }
+
+  function run(options: {
+    latest?: string
+    fetchError?: Error
+    current?: string
+    checkDrift?: (targetVersion: string) => InstallSource[]
+  }) {
+    const out: string[] = []
+    const err: string[] = []
+    const codePromise = runUpdate({
+      currentVersion: options.current || '0.3.33',
+      fetchLatest: options.fetchError
+        ? async () => { throw options.fetchError }
+        : async () => options.latest || '0.3.33',
+      installPackage: async () => undefined,
+      installPager: async () => ({ ok: true, skipped: true }),
+      write: (text) => out.push(text),
+      writeErr: (text) => err.push(text),
+      checkDrift: options.checkDrift,
+    })
+    return { codePromise, out, err }
+  }
+
+  it('warns about an out-of-sync sibling after a successful upgrade', async () => {
+    const checkDrift = jest.fn((_: string) => [brewSource])
+    const { codePromise, err } = run({ latest: '0.3.35', checkDrift })
+    expect(await codePromise).toBe(0)
+    expect(checkDrift).toHaveBeenCalledWith('0.3.35')
+    expect(err.join('')).toContain('sisu: warning — another sisu install is out of sync:')
+    expect(err.join('')).toContain('/opt/homebrew/lib/node_modules/@stevezhou/sisu (0.3.33)')
+    expect(err.join('')).toContain('npm i -g @stevezhou/sisu@0.3.35 --prefix /opt/homebrew')
+  })
+
+  it('warns on the no-op path too, against the running version', async () => {
+    const checkDrift = jest.fn((_: string) => [brewSource])
+    const { codePromise, err } = run({ latest: '0.3.35', current: '0.3.35', checkDrift })
+    expect(await codePromise).toBe(0)
+    expect(checkDrift).toHaveBeenCalledWith('0.3.35')
+    expect(err.join('')).toContain('npm i -g @stevezhou/sisu@0.3.35 --prefix /opt/homebrew')
+  })
+
+  it('stays silent when every source matches the target version', async () => {
+    const checkDrift = jest.fn((_: string) => [
+      { root: brewSource.root, prefix: brewSource.prefix, version: '0.3.35' },
+    ])
+    const { codePromise, err } = run({ latest: '0.3.35', checkDrift })
+    expect(await codePromise).toBe(0)
+    expect(err.join('')).not.toContain('out of sync')
+  })
+
+  it('stays silent when there is nothing to check (single source)', async () => {
+    const checkDrift = jest.fn((_: string) => [])
+    const { codePromise, err } = run({ latest: '0.3.35', checkDrift })
+    expect(await codePromise).toBe(0)
+    expect(err.join('')).toBe('')
+  })
+
+  it('skips the check when the target is @latest (unknown installed version)', async () => {
+    const checkDrift = jest.fn((_: string) => [brewSource])
+    const { codePromise, err } = run({ fetchError: new Error('offline'), checkDrift })
+    expect(await codePromise).toBe(0)
+    expect(checkDrift).not.toHaveBeenCalled()
+    expect(err.join('')).toBe('')
   })
 })

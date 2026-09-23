@@ -6,6 +6,7 @@ import { SISU_CLIENT_VERSION } from './client'
 import { defaultHttp, type HttpClient } from './http'
 import { comparePagerStamp, firstReadableDir } from './runtime/launch'
 import { getSisuHome } from './store'
+import { type InstallSource, driftedSources, findInstallSources, formatDriftWarning } from './updateSources'
 
 export type PagerInstallResult = {
   ok: boolean
@@ -225,9 +226,18 @@ export async function runUpdate(options: {
   installPager: (opts: { force?: boolean }) => Promise<PagerInstallResult>
   write: (text: string) => void
   writeErr?: (text: string) => void
+  /** Sibling-install drift check; injected in tests. */
+  checkDrift?: (targetVersion: string) => InstallSource[]
 }): Promise<number> {
   const current = options.currentVersion || SISU_CLIENT_VERSION
   const writeErr = options.writeErr || options.write
+  const warnDrift = (targetVersion: string): void => {
+    const check = options.checkDrift
+    if (!check || targetVersion === 'latest') return
+    for (const source of driftedSources(targetVersion, check(targetVersion))) {
+      writeErr(formatDriftWarning(source, targetVersion))
+    }
+  }
   options.write(`sisu: cli ${current}\n`)
   let latest: string | null = null
   try {
@@ -255,6 +265,7 @@ export async function runUpdate(options: {
       return 1
     }
     options.write(`sisu: cli ${plan.to} installed (pager via postinstall). restart sisu.\n`)
+    warnDrift(plan.to)
     return 0
   }
   options.write(`sisu: cli already ${current}\n`)
@@ -265,8 +276,10 @@ export async function runUpdate(options: {
         ? `pager already current${result.dest ? ` at ${result.dest}` : ''}\n`
         : `installed pager${result.dest ? ` to ${result.dest}` : ''}\n`,
     )
+    warnDrift(current)
     return 0
   }
   writeErr(`sisu update: ${result.reason || 'pager install failed'}\n`)
+  warnDrift(current)
   return result.skipped ? 0 : 1
 }
