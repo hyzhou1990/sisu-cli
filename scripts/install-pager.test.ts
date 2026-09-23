@@ -48,9 +48,9 @@ it('npm pack includes Apache grok-build NOTICE files', () => {
   expect(fs.existsSync(path.join(root, 'THIRD-PARTY-NOTICES'))).toBe(true)
 })
 
-it('ships npm platform packages for darwin-arm64, linux, and win32-x64', () => {
+it('ships npm platform packages for mac (arm + Intel), linux, and win32-x64', () => {
   expect([...NPM_PAGER_PLATFORMS].sort()).toEqual(
-    ['darwin-arm64', 'linux-arm64', 'linux-x64', 'win32-x64'].sort(),
+    ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64'].sort(),
   )
   const win = pagerPackageManifest('win32-x64', '0.3.33')
   expect(win).toEqual(

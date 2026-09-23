@@ -11,8 +11,8 @@ const os = require('os')
 const path = require('path')
 const zlib = require('zlib')
 
-const NPM_PAGER_PLATFORMS = ['darwin-arm64', 'linux-arm64', 'linux-x64', 'win32-x64']
-const SUPPORTED = new Set([...NPM_PAGER_PLATFORMS, 'darwin-x64'])
+const NPM_PAGER_PLATFORMS = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64']
+const SUPPORTED = new Set(NPM_PAGER_PLATFORMS)
 const BIN = process.platform === 'win32' ? 'xai-grok-pager.exe' : 'xai-grok-pager'
 
 function readVersion() {
