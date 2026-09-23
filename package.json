@@ -1,6 +1,6 @@
 {
   "name": "@stevezhou/sisu",
-  "version": "0.3.37",
+  "version": "0.3.38",
   "description": "SiSu CLI — 思溯 / SiSu · 思有所溯",
   "license": "UNLICENSED",
   "homepage": "https://www.sisu.chat",
@@ -33,11 +33,11 @@
     "access": "public"
   },
   "optionalDependencies": {
-    "@stevezhou/sisu-pager-darwin-arm64": "0.3.37",
-    "@stevezhou/sisu-pager-darwin-x64": "0.3.37",
-    "@stevezhou/sisu-pager-linux-arm64": "0.3.37",
-    "@stevezhou/sisu-pager-linux-x64": "0.3.37",
-    "@stevezhou/sisu-pager-win32-x64": "0.3.37"
+    "@stevezhou/sisu-pager-darwin-arm64": "0.3.38",
+    "@stevezhou/sisu-pager-darwin-x64": "0.3.38",
+    "@stevezhou/sisu-pager-linux-arm64": "0.3.38",
+    "@stevezhou/sisu-pager-linux-x64": "0.3.38",
+    "@stevezhou/sisu-pager-win32-x64": "0.3.38"
   },
   "scripts": {
     "build": "tsc",
