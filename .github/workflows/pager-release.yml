@@ -231,6 +231,15 @@ jobs:
           set -euo pipefail
           brew install protobuf
 
+      - name: Install the pinned toolchain's x86_64 std
+        run: |
+          set -euo pipefail
+          # vendor/grok-build/rust-toolchain.toml pins channel 1.94.0, which
+          # shadows the dtolnay-installed stable — install the cross std for
+          # the pinned toolchain (cwd selects it via the toml).
+          cd vendor/grok-build
+          rustup target add x86_64-apple-darwin
+
       - name: Build and package .br
         env:
           PLATFORM_KEY: darwin-x64
