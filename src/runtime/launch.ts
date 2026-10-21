@@ -298,6 +298,9 @@ export function prependToolPath(pathEnv = process.env.PATH || '', home = getSisu
   return [...prefix, ...current].join(delim)
 }
 
+/** The one image model SiSu's runtime Images API serves (same as web). */
+export const SISU_IMAGE_GEN_MODEL = 'gpt-image-2.5'
+
 export function sisuGrokBuildEnv(): NodeJS.ProcessEnv {
   const auth = readAuth()
   const engine = sisuEngineHome()
@@ -355,6 +358,10 @@ export function sisuGrokBuildEnv(): NodeJS.ProcessEnv {
   setEnv(env, 'GROK_XAI_API_BASE_URL', runtime)
   setEnv(env, 'XAI_API_BASE_URL', runtime)
   setEnv(env, 'GROK_MODELS_BASE_URL', runtime)
+  // image_gen posts to {runtime}/images/generations; SiSu serves gpt-image-2.5 only.
+  setEnv(env, 'GROK_IMAGE_GEN_MODEL_OVERRIDE', SISU_IMAGE_GEN_MODEL)
+  // image_edit posts to {runtime}/images/edits on the same model.
+  setEnv(env, 'GROK_IMAGE_EDIT_MODEL_OVERRIDE', SISU_IMAGE_GEN_MODEL)
   setEnv(env, 'GROK_MODELS_LIST_URL', `${runtime}/models`)
   setEnv(env, 'GROK_CLI_CHAT_PROXY_BASE_URL', runtime)
   setEnv(env, 'GROK_DISABLE_CLI_CHAT_PROXY', '1')

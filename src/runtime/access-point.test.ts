@@ -96,6 +96,9 @@ function assertHostContract(env: NodeJS.ProcessEnv, home: string, apiBase: strin
   expect(env.GROK_CLI_CHAT_PROXY_BASE_URL).toBe(runtime)
   expect(env.GROK_CLI_CHAT_PROXY_BASE_URL).not.toMatch(/grok\.com/i)
   expect(env.GROK_XAI_API_BASE_URL).not.toMatch(/grok\.com|api\.x\.ai/i)
+  // TUI image_gen must hit SiSu's gpt-image-2.5, not xAI Imagine slugs.
+  expect(env.GROK_IMAGE_GEN_MODEL_OVERRIDE).toBe('gpt-image-2.5')
+  expect(env.GROK_IMAGE_EDIT_MODEL_OVERRIDE).toBe('gpt-image-2.5')
   expect(env.GROK_MODELS_LIST_URL).toBe(`${runtime}/models`)
   if (accessPointBfullEnabled()) {
     expect(env.XAI_API_KEY).toBeUndefined()

@@ -589,6 +589,11 @@ pub(crate) const TIER_RESTRICTED_COMMANDS: &[&str] =
 /// absent tier (`None`) as restricted (it recovers live on the next settings
 /// update); the shell's capability gate treats absence as unrestricted.
 fn is_restricted_tier(tier: Option<&str>) -> bool {
+    // SiSu access point: quota is SiSu points, not an xAI tier. The tier is
+    // always absent, which would otherwise hide `/imagine` forever.
+    if xai_grok_shell::sisu_access_point::active() {
+        return false;
+    }
     match tier {
         None => true,
         Some(t) => xai_grok_shell::tier::is_restricted_tier_name(t),
