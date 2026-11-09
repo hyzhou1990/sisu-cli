@@ -95,6 +95,10 @@ export function writeSisuGrokConfig(): string {
     '[agent]',
     'system_prompt_label = "SiSu"',
     '',
+    '# Only takes effect while a sandbox profile is active (sisu --sandbox).',
+    '[sandbox]',
+    'auto_allow_bash = true',
+    '',
   ].join('\n')
   const existing = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : ''
   if (!existing || existing.includes('sisu-managed grok-build')) {

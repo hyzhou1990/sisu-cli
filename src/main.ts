@@ -17,7 +17,14 @@ import {
 import { defaultHttp, HttpClient } from './http'
 import { SISU_CLIENT_VERSION } from './client'
 import { SISU_BRAND, sisuProductSurfaces } from './logo'
-import { DEFAULT_API_BASE } from './store'
+import { DEFAULT_API_BASE, getSisuHome, sisuEngineHome } from './store'
+import {
+  readSandboxSetting,
+  resolveSandbox,
+  sandboxPagerArgs,
+  writeSandboxSetting,
+  writeSisuSandboxProfile,
+} from './runtime/sandbox'
 import { defaultTuiIo, runTui } from './tui'
 import { fetchLatestVersion, formatUpdateNotice, installNpmPackage, maybeLatestUpdate, runUpdate } from './update'
 import { findInstallSources } from './updateSources'
@@ -66,6 +73,8 @@ Usage:
   sisu training --on|--off
   sisu                 interactive TUI (思溯 / SiSu · 思有所溯)
   sisu --resume <id>          reopen a local pager session
+  sisu --sandbox [profile]    run the TUI in the OS sandbox (default profile: sisu)
+  sisu sandbox on|off|status  make the sandbox the default for every TUI launch
   sisu --version
   sisu help
 
@@ -116,6 +125,21 @@ function parseArgs(args: string[]): { flags: Record<string, string>; rest: strin
   return { flags, rest, switches }
 }
 
+function sandboxCommand(action: string | undefined): number {
+  const home = getSisuHome()
+  if (action === 'on' || action === 'off') {
+    writeSandboxSetting(home, action === 'on')
+    process.stdout.write(`sandbox ${action}\n`)
+    return 0
+  }
+  if (action && action !== 'status') {
+    process.stderr.write('usage: sisu sandbox on|off|status\n')
+    return 2
+  }
+  process.stdout.write(`sandbox ${readSandboxSetting(home) ? 'on' : 'off'}\n`)
+  return 0
+}
+
 export async function runCli(
   argv: string[],
   deps: {
@@ -124,6 +148,7 @@ export async function runCli(
     fetchLatest?: () => Promise<string>
     installPackage?: (version: string) => Promise<void> | void
   } = {},
+  sandboxOverride?: string | null,
 ): Promise<number> {
   const http = deps.http ?? defaultHttp
   const [command, ...args] = argv
@@ -135,6 +160,12 @@ export async function runCli(
     process.stdout.write(`sisu ${SISU_CLIENT_VERSION} — ${SISU_BRAND.zh} ${SISU_BRAND.en} · ${SISU_BRAND.headline}\n`)
     return 0
   }
+  if (command === 'sandbox') {
+    return sandboxCommand(args[0])
+  }
+  const sandbox = resolveSandbox(argv, readSandboxSetting(getSisuHome()))
+  const tuiLaunch = !command || ['tui', '--resume', '--sandbox'].includes(command)
+  if (tuiLaunch && sandbox.argv !== argv) return runCli(sandbox.argv.length ? sandbox.argv : ['tui'], deps, sandbox.profile)
   if (!command || command === 'tui' || command === '--resume') {
     const latest = await maybeLatestUpdate({
       fetchLatest: deps.fetchLatest ?? (() => fetchLatestVersion(http)),
@@ -144,7 +175,14 @@ export async function runCli(
       const notice = formatUpdateNotice(SISU_CLIENT_VERSION, latest)
       if (notice) process.stderr.write(notice)
     }
-    return runTui(defaultTuiIo(), { pagerArgs: pagerResumeArgs(argv) })
+    const profile = sandboxOverride === undefined ? sandbox.profile : sandboxOverride
+    if (profile) {
+      const prepared = writeSisuSandboxProfile(sisuEngineHome())
+      if (!prepared.denyActive) {
+        process.stderr.write('sisu: sandbox on without credential read-deny (needs macOS, or bubblewrap on Linux)\n')
+      }
+    }
+    return runTui(defaultTuiIo(), { pagerArgs: [...sandboxPagerArgs(profile), ...pagerResumeArgs(argv)] })
   }
   if (command === 'update') {
     return runUpdate({
